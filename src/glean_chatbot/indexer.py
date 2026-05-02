@@ -162,16 +162,15 @@ def register_datasource(
     url = f"{base_url}/api/index/v1/adddatasource"
     with httpx.Client(timeout=30) as client:
         response = client.post(url, headers=headers, json=payload)
-        if response.status_code == 403:
-            # Sandbox datasources are pre-created in the admin console;
-            # the indexing token may not have permission to create new ones.
+        if response.status_code in (400, 403, 409):
+            # Sandbox datasources are typically pre-created in the admin console.
+            # 400/403 = no permission to create; 409 = already exists. All are safe to skip.
             print(
-                f"  Datasource registration skipped (403 Forbidden) – "
-                "assuming '{datasource}' is pre-configured in the Glean admin console."
+                f"  Datasource registration skipped (HTTP {response.status_code}) – "
+                f"assuming '{datasource}' is pre-configured in the Glean admin console."
             )
             return
-        if response.status_code not in (200, 409):
-            response.raise_for_status()
+        response.raise_for_status()
         print(f"  Datasource '{datasource}' registered → HTTP {response.status_code}")
 
 
