@@ -95,8 +95,10 @@ def _parse_response(response) -> ChatResponse:
 
     messages = getattr(response, "messages", None) or []
     for msg in messages:
-        msg_type = getattr(msg, "message_type", None) or getattr(msg, "messageType", None)
-        if str(msg_type).upper() == "CONTENT":
+        msg_type = getattr(msg, "message_type", None)
+        # msg_type is a MessageType enum — compare via .value to get the string
+        type_val = getattr(msg_type, "value", str(msg_type)).upper()
+        if type_val == "CONTENT":
             for fragment in getattr(msg, "fragments", None) or []:
                 text = getattr(fragment, "text", None)
                 if text:
