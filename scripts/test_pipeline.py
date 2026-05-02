@@ -23,16 +23,22 @@ import httpx
 
 INSTANCE = os.environ["GLEAN_INSTANCE"]
 USER_TOKEN = os.environ["GLEAN_USER_TOKEN"]
+CHAT_TOKEN = os.environ.get("GLEAN_CHAT_TOKEN") or USER_TOKEN
 ACT_AS = os.environ.get("GLEAN_ACT_AS", "")
 DATASOURCE = os.environ.get("GLEAN_DATASOURCE", "interviewds")
 BASE_URL = os.environ.get("GLEAN_BASE_URL", f"https://{INSTANCE}-be.glean.com")
 
-HEADERS = {
+SEARCH_HEADERS = {
     "Authorization": f"Bearer {USER_TOKEN}",
     "Content-Type": "application/json",
 }
-if ACT_AS:
-    HEADERS["X-Glean-ActAs"] = ACT_AS
+CHAT_HEADERS = {
+    "Authorization": f"Bearer {CHAT_TOKEN}",
+    "Content-Type": "application/json",
+}
+for h in (SEARCH_HEADERS, CHAT_HEADERS):
+    if ACT_AS:
+        h["X-Glean-ActAs"] = ACT_AS
 
 TEST_QUESTION = "What is the PTO policy?"
 
@@ -47,7 +53,7 @@ def test_search() -> list[dict]:
         "pageSize": 5,
         "requestOptions": {"datasourceFilter": DATASOURCE},
     }
-    r = httpx.post(f"{BASE_URL}/rest/api/v1/search", headers=HEADERS, json=payload, timeout=15)
+    r = httpx.post(f"{BASE_URL}/rest/api/v1/search", headers=SEARCH_HEADERS, json=payload, timeout=15)
     r.raise_for_status()
     data = r.json()
 
@@ -91,12 +97,13 @@ def test_chat(results: list[dict]) -> None:
         "stream": False,
     }
 
-    r = httpx.post(f"{BASE_URL}/rest/api/v1/chat", headers=HEADERS, json=payload, timeout=60)
+    r = httpx.post(f"{BASE_URL}/rest/api/v1/chat", headers=CHAT_HEADERS, json=payload, timeout=60)
     if not r.is_success:
-        print(f"Chat error: {r.text}")
+        print(f"Chat error ({r.status_code}): {r.text}")
         r.raise_for_status()
 
     data = r.json()
+    print(f"\nRAW CHAT RESPONSE:\n{json.dumps(data, indent=2)[:3000]}")
 
     # Extract answer text
     answer = ""
@@ -111,14 +118,16 @@ def test_chat(results: list[dict]) -> None:
     if not answer:
         answer = data.get("answer", "(no answer returned)")
 
-    print(f"\nAnswer:\n{answer.strip()}")
-    print(f"\nRaw chat session ID: {data.get('chatSessionId', 'n/a')}")
+    print(f"\nParsed answer:\n{answer.strip()}")
+    print(f"\nChat session ID: {data.get('chatSessionId', 'n/a')}")
 
 
 if __name__ == "__main__":
-    print(f"Instance  : {INSTANCE}")
-    print(f"Datasource: {DATASOURCE}")
-    print(f"Act-as    : {ACT_AS or '(not set)'}")
+    print(f"Instance     : {INSTANCE}")
+    print(f"Datasource   : {DATASOURCE}")
+    print(f"Act-as       : {ACT_AS or '(not set)'}")
+    print(f"Search token : {USER_TOKEN[:8]}…")
+    print(f"Chat token   : {CHAT_TOKEN[:8]}…")
 
     results = test_search()
     if results:
