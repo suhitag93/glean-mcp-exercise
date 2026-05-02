@@ -60,8 +60,10 @@ def chat(
     # The SDK has no built-in act_as param — inject the header via a custom client
     if cfg.act_as_email:
         glean_kwargs["client"] = httpx.Client(
-            headers={"X-Glean-ActAs": cfg.act_as_email}
+            headers={"X-Glean-ActAs": cfg.act_as_email},
+            timeout=httpx.Timeout(120.0),
         )
+    glean_kwargs["timeout_ms"] = 120_000
 
     answer_chunks: list[str] = []
     with Glean(**glean_kwargs) as glean:
