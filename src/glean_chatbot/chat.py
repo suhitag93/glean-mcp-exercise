@@ -127,7 +127,7 @@ def _extract_doc_ids(results: list[SearchResult]) -> list[str]:
 )
 def _post_chat(payload: dict, *, cfg: Config) -> ChatResponse:
     headers = {
-        "Authorization": f"Bearer {cfg.user_token}",
+        "Authorization": f"Bearer {cfg.chat_token}",
         "Content-Type": "application/json",
     }
     if cfg.act_as_email:

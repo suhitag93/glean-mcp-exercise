@@ -20,6 +20,8 @@ class Config:
         self.instance: str = self._require("GLEAN_INSTANCE")
         self.indexing_token: str = self._require("GLEAN_INDEXING_TOKEN")
         self.user_token: str = self._require("GLEAN_USER_TOKEN")
+        # Chat token falls back to user_token if not explicitly set
+        self.chat_token: str = os.getenv("GLEAN_CHAT_TOKEN") or self.user_token
         self.datasource: str = os.getenv("GLEAN_DATASOURCE", "glean-mcp-exercise")
         self.act_as_email: str | None = os.getenv("GLEAN_ACT_AS")
         self._base_url: str | None = os.getenv("GLEAN_BASE_URL")
