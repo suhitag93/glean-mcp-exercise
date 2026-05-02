@@ -5,6 +5,7 @@ Usage (from repo root with venv active):
     streamlit run scripts/chat_ui.py
 """
 
+import re
 import sys
 from pathlib import Path
 
@@ -36,10 +37,10 @@ st.caption("Ask anything about the Acme Corp knowledge base.")
 # Known datasource configs: (url_prefix, object_type)
 DATASOURCE_CONFIGS: dict[str, tuple[str, str]] = {
     "interviewds":  ("https://internal.example.com/policies", "KnowledgeArticle"),
-    "interviewds2": ("https://support-lab-be.glean.com",      "Article"),
-    "interviewds4": ("https://support-lab-be.glean.com",      "Article"),
-    "interviewds5": ("https://support-lab-be.glean.com",      "Article"),
-    "interviewds6": ("https://support-lab-be.glean.com",      "Article"),
+    "interviewds2": ("https://internal.example.com/policies", "Article"),
+    "interviewds4": ("https://internal.example.com/policies", "Article"),
+    "interviewds5": ("https://internal.example.com/policies", "Article"),
+    "interviewds6": ("https://internal.example.com/policies", "Article"),
 }
 
 with st.sidebar:
@@ -90,6 +91,21 @@ with st.sidebar:
                     f"datasource **'{datasource}'**. Update the 'Object type' field to match what's "
                     "defined for this datasource in the Glean admin console."
                 )
+            elif "does not match the URL Regex pattern" in msg:
+                # Extract the required regex from the error and derive a usable prefix
+                m = re.search(r"URL Regex pattern (.+?) for the datasource", msg)
+                if m:
+                    detected_regex = m.group(1)
+                    # Strip regex escapes and trailing wildcard to get a base URL prefix
+                    detected_prefix = re.sub(r"\\\.", ".", detected_regex).rstrip(".*").rstrip("/")
+                    DATASOURCE_CONFIGS[datasource] = (detected_prefix, object_type)
+                    st.warning(
+                        f"URL prefix auto-corrected to **`{detected_prefix}`** "
+                        f"(detected from datasource regex `{detected_regex}`). "
+                        "Click **Index this datasource** again to retry."
+                    )
+                else:
+                    st.error(f"Indexing failed: {e}")
             else:
                 st.error(f"Indexing failed: {e}")
     show_sources = st.toggle("Show sources", value=True)
