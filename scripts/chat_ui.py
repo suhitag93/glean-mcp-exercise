@@ -60,7 +60,15 @@ with st.sidebar:
             st.success(f"Indexed {len(docs)} documents into '{datasource}'. It may take a few minutes to appear in search.")
         except Exception as e:
             log.empty()
-            st.error(f"Indexing failed: {e}")
+            msg = str(e)
+            if "Object definitions not found" in msg or "KnowledgeArticle" in msg:
+                st.error(
+                    f"Indexing failed: datasource **'{datasource}'** is not configured in Glean. "
+                    "It must be pre-registered in the Glean admin console with a `KnowledgeArticle` "
+                    "object definition before documents can be indexed into it."
+                )
+            else:
+                st.error(f"Indexing failed: {e}")
     show_sources = st.toggle("Show sources", value=True)
     st.divider()
     if st.button("Clear conversation"):
