@@ -37,6 +37,11 @@ with st.sidebar:
     st.header("Settings")
     num_results = st.slider("Search results to use", min_value=1, max_value=10, value=5)
     datasource = st.text_input("Datasource filter", value="interviewds")
+    doc_url_prefix = st.text_input(
+        "Document URL prefix",
+        value="https://internal.example.com/policies",
+        help="Must match the URL regex configured for the datasource in Glean admin",
+    )
     if st.button("Index this datasource", help="Index all documents from data/documents/ into the selected datasource"):
         cfg = get_config()
         log = st.empty()
@@ -48,7 +53,7 @@ with st.sidebar:
                 datasource=datasource,
             )
             log.info("Loading documents…")
-            docs = build_documents(datasource)
+            docs = build_documents(datasource, url_prefix=doc_url_prefix)
             log.info(f"Indexing {len(docs)} documents into '{datasource}'…")
             _index_documents(
                 docs,
