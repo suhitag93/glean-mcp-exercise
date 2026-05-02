@@ -95,8 +95,11 @@ def _index_documents(
             url = f"{base_url}/api/index/v1/indexdocuments"
             response = client.post(url, headers=headers, json=payload)
             if not response.is_success:
-                print(f"  Error response body: {response.text}")
-            response.raise_for_status()
+                raise httpx.HTTPStatusError(
+                    f"HTTP {response.status_code}: {response.text}",
+                    request=response.request,
+                    response=response,
+                )
             print(
                 f"  Indexed batch {i // batch_size + 1} "
                 f"({len(batch)} documents) → HTTP {response.status_code}"
