@@ -130,6 +130,8 @@ def _post_chat(payload: dict, *, cfg: Config) -> ChatResponse:
         "Authorization": f"Bearer {cfg.user_token}",
         "Content-Type": "application/json",
     }
+    if cfg.act_as_email:
+        headers["X-Glean-ActAs"] = cfg.act_as_email
     url = f"{cfg.base_url}/rest/api/v1/chat"
 
     with httpx.Client(timeout=60) as client:
