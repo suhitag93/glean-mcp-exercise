@@ -17,6 +17,7 @@ import streamlit as st
 
 from glean_chatbot.chat import chat
 from glean_chatbot.config import get_config
+from glean_chatbot.indexer import build_documents, register_datasource, _index_documents
 from glean_chatbot.search import search
 
 # ── Page config ──────────────────────────────────────────────────────────────
@@ -36,6 +37,30 @@ with st.sidebar:
     st.header("Settings")
     num_results = st.slider("Search results to use", min_value=1, max_value=10, value=5)
     datasource = st.text_input("Datasource filter", value="interviewds")
+    if st.button("Index this datasource", help="Index all documents from data/documents/ into the selected datasource"):
+        cfg = get_config()
+        log = st.empty()
+        try:
+            log.info("Registering datasource…")
+            register_datasource(
+                base_url=cfg.base_url,
+                indexing_token=cfg.indexing_token,
+                datasource=datasource,
+            )
+            log.info("Loading documents…")
+            docs = build_documents(datasource)
+            log.info(f"Indexing {len(docs)} documents into '{datasource}'…")
+            _index_documents(
+                docs,
+                base_url=cfg.base_url,
+                indexing_token=cfg.indexing_token,
+                datasource=datasource,
+            )
+            log.empty()
+            st.success(f"Indexed {len(docs)} documents into '{datasource}'. It may take a few minutes to appear in search.")
+        except Exception as e:
+            log.empty()
+            st.error(f"Indexing failed: {e}")
     show_sources = st.toggle("Show sources", value=True)
     st.divider()
     if st.button("Clear conversation"):
@@ -50,6 +75,15 @@ if "messages" not in st.session_state:
 
 if "chat_session_id" not in st.session_state:
     st.session_state.chat_session_id = None
+
+if "active_datasource" not in st.session_state:
+    st.session_state.active_datasource = datasource
+
+# Clear conversation when datasource changes
+if datasource != st.session_state.active_datasource:
+    st.session_state.messages = []
+    st.session_state.chat_session_id = None
+    st.session_state.active_datasource = datasource
 
 # ── Render chat history ───────────────────────────────────────────────────────
 
