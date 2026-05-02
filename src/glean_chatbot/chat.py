@@ -7,6 +7,7 @@ endpoint times out on the support-lab sandbox instance.
 
 from __future__ import annotations
 
+import httpx
 from glean.api_client import Glean, models
 
 from .config import Config
@@ -56,8 +57,11 @@ def chat(
         api_token=cfg.chat_token,
         server_url=cfg.base_url,
     )
+    # The SDK has no built-in act_as param — inject the header via a custom client
     if cfg.act_as_email:
-        glean_kwargs["act_as"] = cfg.act_as_email
+        glean_kwargs["client"] = httpx.Client(
+            headers={"X-Glean-ActAs": cfg.act_as_email}
+        )
 
     answer_chunks: list[str] = []
     with Glean(**glean_kwargs) as glean:
