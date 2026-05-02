@@ -1,17 +1,13 @@
 """
-Glean Chat API client.
+Glean Chat API client using the official Glean Python SDK.
 
-Combines search results (retrieved context) with the user's question
-and calls the Glean Chat API to produce a grounded, cited answer.
+Uses create_stream() per the official developer docs — the non-streaming
+endpoint times out on the support-lab sandbox instance.
 """
 
 from __future__ import annotations
 
-import json
-import os
-
-import httpx
-from tenacity import retry, stop_after_attempt, wait_exponential
+from glean.api_client import Glean, models
 
 from .config import Config
 from .models import ChatResponse, CitationSource, SearchResult
@@ -28,6 +24,9 @@ def chat(
     """
     Send a question to the Glean Chat API with search results as grounding context.
 
+    Streams the response via the official Glean SDK and collects all chunks
+    into a single answer string.
+
     Args:
         question: The user's natural-language question.
         search_results: Results from the Glean Search API to ground the answer.
@@ -41,17 +40,38 @@ def chat(
     context = _build_context_block(search_results)
     message_text = f"{context}\n\n---\nQuestion: {question}"
 
-    payload: dict = {
-        "messages": [
-            {"fragments": [{"text": message_text}]},
+    kwargs: dict = dict(
+        messages=[
+            {
+                "fragments": [
+                    models.ChatMessageFragment(text=message_text),
+                ],
+            }
         ],
-        "saveChat": save_chat,
-        "stream": True,
-    }
+    )
     if chat_session_id:
-        payload["chatSessionId"] = chat_session_id
+        kwargs["chat_session_id"] = chat_session_id
 
-    return _post_chat(payload, cfg=cfg)
+    glean_kwargs: dict = dict(
+        api_token=cfg.chat_token,
+        server_url=cfg.base_url,
+    )
+    if cfg.act_as_email:
+        glean_kwargs["act_as"] = cfg.act_as_email
+
+    answer_chunks: list[str] = []
+    with Glean(**glean_kwargs) as glean:
+        response_stream = glean.client.chat.create_stream(**kwargs)
+        for chunk in response_stream:
+            if chunk:
+                answer_chunks.append(chunk)
+
+    answer = "".join(answer_chunks).strip()
+    return ChatResponse(
+        answer=answer or "I could not generate an answer from the available sources.",
+        sources=[],
+        chat_session_id=None,
+    )
 
 
 def _build_context_block(results: list[SearchResult]) -> str:
@@ -75,87 +95,3 @@ def _build_context_block(results: list[SearchResult]) -> str:
         lines.append("")
 
     return "\n".join(lines)
-
-
-def _post_chat(payload: dict, *, cfg: Config) -> ChatResponse:
-    headers = {
-        "Authorization": f"Bearer {cfg.chat_token}",
-        "Content-Type": "application/json",
-    }
-    if cfg.act_as_email:
-        headers["X-Glean-ActAs"] = cfg.act_as_email
-    url = f"{cfg.base_url}/rest/api/v1/chat"
-
-    last_data: dict = {}
-    with httpx.Client(timeout=120) as client:
-        with client.stream("POST", url, headers=headers, json=payload) as response:
-            if not response.is_success:
-                body = response.read().decode()
-                print(f"  Chat error ({response.status_code}): {body}")
-                response.raise_for_status()
-
-            for line in response.iter_lines():
-                if not line.startswith("data:"):
-                    continue
-                chunk = line[len("data:"):].strip()
-                if chunk in ("", "[DONE]"):
-                    continue
-                try:
-                    data = json.loads(chunk)
-                    last_data = data
-                    if os.getenv("GLEAN_DEBUG"):
-                        print("SSE chunk:", json.dumps(data, indent=2)[:500])
-                except json.JSONDecodeError:
-                    pass
-
-    return _parse_chat_response(last_data)
-
-
-def _parse_chat_response(data: dict) -> ChatResponse:
-    """
-    Parse the Glean Chat API response.
-
-    Per the official docs, the answer is in the LAST message's fragments.
-    Each fragment has a 'text' key with the answer content.
-    """
-    answer = ""
-    sources: list[CitationSource] = []
-
-    messages = data.get("messages", [])
-    if messages:
-        # Take the last message — that's the assistant's reply per Glean docs
-        last_message = messages[-1]
-        fragments = last_message.get("fragments", [])
-        for fragment in fragments:
-            if isinstance(fragment, str):
-                answer += fragment
-            elif isinstance(fragment, dict):
-                text = fragment.get("text", "")
-                if text:
-                    answer += text
-                # Extract any structured citations
-                citation = fragment.get("citation")
-                if citation and isinstance(citation, dict):
-                    doc = citation.get("document", {})
-                    sources.append(CitationSource(
-                        document_id=doc.get("id") or citation.get("documentId"),
-                        title=doc.get("title") or citation.get("sourceTitle"),
-                        url=doc.get("url") or citation.get("sourceUrl"),
-                        datasource=doc.get("datasource"),
-                        snippet=citation.get("snippet"),
-                    ))
-
-    # De-duplicate sources
-    seen: set[str] = set()
-    deduped: list[CitationSource] = []
-    for s in sources:
-        key = s.url or s.document_id or s.title or ""
-        if key and key not in seen:
-            seen.add(key)
-            deduped.append(s)
-
-    return ChatResponse(
-        answer=answer.strip() or "I could not generate an answer from the available sources.",
-        sources=deduped,
-        chat_session_id=data.get("chatSessionId"),
-    )
