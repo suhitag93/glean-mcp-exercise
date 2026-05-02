@@ -64,6 +64,8 @@ def _post_search(payload: dict, *, cfg: Config) -> list[SearchResult]:
 
     with httpx.Client(timeout=30) as client:
         response = client.post(url, headers=headers, json=payload)
+        if not response.is_success:
+            print(f"  Search error body: {response.text}")
         response.raise_for_status()
 
     data = response.json()
