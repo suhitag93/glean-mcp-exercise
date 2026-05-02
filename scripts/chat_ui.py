@@ -96,8 +96,9 @@ with st.sidebar:
                 m = re.search(r"URL Regex pattern (.+?) for the datasource", msg)
                 if m:
                     detected_regex = m.group(1)
-                    # Strip regex escapes and trailing wildcard to get a base URL prefix
-                    detected_prefix = re.sub(r"\\\.", ".", detected_regex).rstrip(".*").rstrip("/")
+                    # Remove trailing wildcard (e.g. /.*  or .*) then unescape dots
+                    detected_prefix = re.sub(r"/?\.?\*$", "", detected_regex)
+                    detected_prefix = detected_prefix.replace("\\.", ".").rstrip("/")
                     DATASOURCE_CONFIGS[datasource] = (detected_prefix, object_type)
                     st.warning(
                         f"URL prefix auto-corrected to **`{detected_prefix}`** "
