@@ -20,7 +20,10 @@ from .models import ContentSection, DocumentPermissions, GleanDocument
 DOCUMENTS_DIR = Path(__file__).parent.parent.parent / "data" / "documents"
 
 
-def _markdown_to_glean_doc(path: Path, datasource: str) -> GleanDocument:
+DEFAULT_DOC_URL_PREFIX = "https://internal.example.com/policies"
+
+
+def _markdown_to_glean_doc(path: Path, datasource: str, url_prefix: str = DEFAULT_DOC_URL_PREFIX) -> GleanDocument:
     """Parse a Markdown file into a GleanDocument."""
     raw = path.read_text(encoding="utf-8")
     lines = raw.splitlines()
@@ -47,8 +50,7 @@ def _markdown_to_glean_doc(path: Path, datasource: str) -> GleanDocument:
     # Stable document ID derived from filename (no spaces, lowercase)
     doc_id = path.stem.replace(" ", "-").lower()
 
-    # URL must match the datasource's configured regex: https://internal\.example\.com/policies/.*
-    url = f"https://internal.example.com/policies/{doc_id}"
+    url = f"{url_prefix.rstrip('/')}/{doc_id}"
 
     return GleanDocument(
         id=doc_id,
@@ -63,11 +65,11 @@ def _markdown_to_glean_doc(path: Path, datasource: str) -> GleanDocument:
     )
 
 
-def build_documents(datasource: str) -> list[GleanDocument]:
+def build_documents(datasource: str, url_prefix: str = DEFAULT_DOC_URL_PREFIX) -> list[GleanDocument]:
     """Load all Markdown files from DOCUMENTS_DIR and return GleanDocument list."""
     docs = []
     for md_file in sorted(DOCUMENTS_DIR.glob("*.md")):
-        docs.append(_markdown_to_glean_doc(md_file, datasource))
+        docs.append(_markdown_to_glean_doc(md_file, datasource, url_prefix=url_prefix))
     return docs
 
 
