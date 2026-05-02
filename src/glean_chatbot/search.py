@@ -74,6 +74,21 @@ def _post_search(payload: dict, *, cfg: Config) -> list[SearchResult]:
     return _parse_search_response(data)
 
 
+def _extract_snippet_text(s: object) -> str:
+    """Extract plain text from a snippet regardless of how Glean serialised it."""
+    if isinstance(s, str):
+        return s
+    if not isinstance(s, dict):
+        return str(s)
+    # {"snippet": "text"} or {"snippet": {"text": "..."}} or {"text": "..."}
+    snippet = s.get("snippet", "")
+    if isinstance(snippet, str):
+        return snippet
+    if isinstance(snippet, dict):
+        return snippet.get("text", "")
+    return s.get("text", "")
+
+
 def _parse_search_response(data: dict) -> list[SearchResult]:
     """Parse the raw Glean Search API response into SearchResult models."""
     raw_results = data.get("results", [])
@@ -83,10 +98,7 @@ def _parse_search_response(data: dict) -> list[SearchResult]:
         # Extract snippets
         snippets: list[SearchResultSnippet] = []
         for s in item.get("snippets", []):
-            if isinstance(s, str):
-                text = s
-            else:
-                text = s.get("snippet", {}).get("text", "") or s.get("text", "")
+            text = _extract_snippet_text(s)
             if text:
                 snippets.append(SearchResultSnippet(text=text))
 
