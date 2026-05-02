@@ -21,6 +21,7 @@ class Config:
         self.indexing_token: str = self._require("GLEAN_INDEXING_TOKEN")
         self.user_token: str = self._require("GLEAN_USER_TOKEN")
         self.datasource: str = os.getenv("GLEAN_DATASOURCE", "glean-mcp-exercise")
+        self.act_as_email: str | None = os.getenv("GLEAN_ACT_AS")
         self._base_url: str | None = os.getenv("GLEAN_BASE_URL")
 
     @property

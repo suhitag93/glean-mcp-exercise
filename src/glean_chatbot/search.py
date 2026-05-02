@@ -60,6 +60,8 @@ def _post_search(payload: dict, *, cfg: Config) -> list[SearchResult]:
         "Authorization": f"Bearer {cfg.user_token}",
         "Content-Type": "application/json",
     }
+    if cfg.act_as_email:
+        headers["X-Glean-ActAs"] = cfg.act_as_email
     url = f"{cfg.base_url}/rest/api/v1/search"
 
     with httpx.Client(timeout=30) as client:
