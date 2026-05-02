@@ -51,7 +51,7 @@ def chat(
         ],
     )
     if chat_session_id:
-        kwargs["chat_session_id"] = chat_session_id
+        kwargs["chat_id"] = chat_session_id
 
     glean_kwargs: dict = dict(
         api_token=cfg.chat_token,
