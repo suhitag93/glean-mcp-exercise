@@ -139,6 +139,9 @@ def _post_chat(payload: dict, *, cfg: Config) -> ChatResponse:
         response.raise_for_status()
 
     data = response.json()
+    import json, os
+    if os.getenv("GLEAN_DEBUG"):
+        print("RAW CHAT RESPONSE:", json.dumps(data, indent=2)[:3000])
     return _parse_chat_response(data)
 
 
