@@ -47,8 +47,8 @@ def _markdown_to_glean_doc(path: Path, datasource: str) -> GleanDocument:
     # Stable document ID derived from filename (no spaces, lowercase)
     doc_id = path.stem.replace(" ", "-").lower()
 
-    # Fabricate a plausible URL for the document
-    url = f"https://wiki.acme-corp.example.com/docs/{doc_id}"
+    # URL must match the datasource's configured regex: https://internal\.example\.com/policies/.*
+    url = f"https://internal.example.com/policies/{doc_id}"
 
     return GleanDocument(
         id=doc_id,
