@@ -42,6 +42,11 @@ with st.sidebar:
         value="https://internal.example.com/policies",
         help="Must match the URL regex configured for the datasource in Glean admin",
     )
+    object_type = st.text_input(
+        "Object type",
+        value="KnowledgeArticle",
+        help="Must match an object definition configured for the datasource in Glean admin",
+    )
     if st.button("Index this datasource", help="Index all documents from data/documents/ into the selected datasource"):
         cfg = get_config()
         log = st.empty()
@@ -53,7 +58,7 @@ with st.sidebar:
                 datasource=datasource,
             )
             log.info("Loading documents…")
-            docs = build_documents(datasource, url_prefix=doc_url_prefix)
+            docs = build_documents(datasource, url_prefix=doc_url_prefix, object_type=object_type)
             log.info(f"Indexing {len(docs)} documents into '{datasource}'…")
             _index_documents(
                 docs,
@@ -66,11 +71,11 @@ with st.sidebar:
         except Exception as e:
             log.empty()
             msg = str(e)
-            if "Object definitions not found" in msg or "KnowledgeArticle" in msg:
+            if "Object definitions not found" in msg or "object types" in msg:
                 st.error(
-                    f"Indexing failed: datasource **'{datasource}'** is not configured in Glean. "
-                    "It must be pre-registered in the Glean admin console with a `KnowledgeArticle` "
-                    "object definition before documents can be indexed into it."
+                    f"Indexing failed: the object type **'{object_type}'** is not configured for "
+                    f"datasource **'{datasource}'**. Update the 'Object type' field to match what's "
+                    "defined for this datasource in the Glean admin console."
                 )
             else:
                 st.error(f"Indexing failed: {e}")

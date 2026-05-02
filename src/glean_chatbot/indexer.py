@@ -21,9 +21,15 @@ DOCUMENTS_DIR = Path(__file__).parent.parent.parent / "data" / "documents"
 
 
 DEFAULT_DOC_URL_PREFIX = "https://internal.example.com/policies"
+DEFAULT_OBJECT_TYPE = "KnowledgeArticle"
 
 
-def _markdown_to_glean_doc(path: Path, datasource: str, url_prefix: str = DEFAULT_DOC_URL_PREFIX) -> GleanDocument:
+def _markdown_to_glean_doc(
+    path: Path,
+    datasource: str,
+    url_prefix: str = DEFAULT_DOC_URL_PREFIX,
+    object_type: str = DEFAULT_OBJECT_TYPE,
+) -> GleanDocument:
     """Parse a Markdown file into a GleanDocument."""
     raw = path.read_text(encoding="utf-8")
     lines = raw.splitlines()
@@ -55,7 +61,7 @@ def _markdown_to_glean_doc(path: Path, datasource: str, url_prefix: str = DEFAUL
     return GleanDocument(
         id=doc_id,
         datasource=datasource,
-        object_type="KnowledgeArticle",
+        object_type=object_type,
         title=title,
         view_url=url,
         body=ContentSection(mime_type="text/markdown", text_content=raw),
@@ -65,11 +71,15 @@ def _markdown_to_glean_doc(path: Path, datasource: str, url_prefix: str = DEFAUL
     )
 
 
-def build_documents(datasource: str, url_prefix: str = DEFAULT_DOC_URL_PREFIX) -> list[GleanDocument]:
+def build_documents(
+    datasource: str,
+    url_prefix: str = DEFAULT_DOC_URL_PREFIX,
+    object_type: str = DEFAULT_OBJECT_TYPE,
+) -> list[GleanDocument]:
     """Load all Markdown files from DOCUMENTS_DIR and return GleanDocument list."""
     docs = []
     for md_file in sorted(DOCUMENTS_DIR.glob("*.md")):
-        docs.append(_markdown_to_glean_doc(md_file, datasource, url_prefix=url_prefix))
+        docs.append(_markdown_to_glean_doc(md_file, datasource, url_prefix=url_prefix, object_type=object_type))
     return docs
 
 
