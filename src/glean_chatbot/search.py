@@ -83,7 +83,10 @@ def _parse_search_response(data: dict) -> list[SearchResult]:
         # Extract snippets
         snippets: list[SearchResultSnippet] = []
         for s in item.get("snippets", []):
-            text = s.get("snippet", {}).get("text", "") or s.get("text", "")
+            if isinstance(s, str):
+                text = s
+            else:
+                text = s.get("snippet", {}).get("text", "") or s.get("text", "")
             if text:
                 snippets.append(SearchResultSnippet(text=text))
 
