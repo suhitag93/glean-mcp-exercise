@@ -1,8 +1,8 @@
 """
 Glean Chat API client using the official Glean Python SDK.
 
-Uses create_stream() per the official developer docs — the non-streaming
-endpoint times out on the support-lab sandbox instance.
+Uses create() (non-streaming) — the sandbox returns a complete JSON
+response. The answer is in the message where messageType == "CONTENT".
 """
 
 from __future__ import annotations
@@ -65,18 +65,39 @@ def chat(
         )
     glean_kwargs["timeout_ms"] = 120_000
 
-    answer_chunks: list[str] = []
     with Glean(**glean_kwargs) as glean:
-        response_stream = glean.client.chat.create_stream(**kwargs)
-        for chunk in response_stream:
-            if chunk:
-                answer_chunks.append(chunk)
+        response = glean.client.chat.create(**kwargs)
 
-    answer = "".join(answer_chunks).strip()
+    return _parse_response(response)
+
+
+def _parse_response(response) -> ChatResponse:
+    """
+    Extract the answer from the SDK response.
+
+    The sandbox returns a full JSON response where the final answer is in
+    the message with messageType == "CONTENT".
+    """
+    answer = ""
+    sources: list[CitationSource] = []
+    chat_id: str | None = None
+
+    if hasattr(response, "chat_id"):
+        chat_id = response.chat_id
+
+    messages = getattr(response, "messages", None) or []
+    for msg in messages:
+        msg_type = getattr(msg, "message_type", None) or getattr(msg, "messageType", None)
+        if str(msg_type).upper() == "CONTENT":
+            for fragment in getattr(msg, "fragments", None) or []:
+                text = getattr(fragment, "text", None)
+                if text:
+                    answer += text
+
     return ChatResponse(
-        answer=answer or "I could not generate an answer from the available sources.",
-        sources=[],
-        chat_session_id=None,
+        answer=answer.strip() or "I could not generate an answer from the available sources.",
+        sources=sources,
+        chat_session_id=chat_id,
     )
 
 
