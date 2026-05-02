@@ -33,18 +33,31 @@ st.caption("Ask anything about the Acme Corp knowledge base.")
 
 # ── Sidebar settings ─────────────────────────────────────────────────────────
 
+# Known datasource configs: (url_prefix, object_type)
+DATASOURCE_CONFIGS: dict[str, tuple[str, str]] = {
+    "interviewds":  ("https://internal.example.com/policies", "KnowledgeArticle"),
+    "interviewds2": ("https://support-lab-be.glean.com",      "Article"),
+    "interviewds4": ("https://support-lab-be.glean.com",      "Article"),
+    "interviewds5": ("https://support-lab-be.glean.com",      "Article"),
+    "interviewds6": ("https://support-lab-be.glean.com",      "Article"),
+}
+
 with st.sidebar:
     st.header("Settings")
     num_results = st.slider("Search results to use", min_value=1, max_value=10, value=5)
     datasource = st.text_input("Datasource filter", value="interviewds")
+
+    default_url, default_obj = DATASOURCE_CONFIGS.get(
+        datasource, ("https://internal.example.com/policies", "KnowledgeArticle")
+    )
     doc_url_prefix = st.text_input(
         "Document URL prefix",
-        value="https://internal.example.com/policies",
+        value=default_url,
         help="Must match the URL regex configured for the datasource in Glean admin",
     )
     object_type = st.text_input(
         "Object type",
-        value="KnowledgeArticle",
+        value=default_obj,
         help="Must match an object definition configured for the datasource in Glean admin",
     )
     if st.button("Index this datasource", help="Index all documents from data/documents/ into the selected datasource"):
