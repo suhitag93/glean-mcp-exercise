@@ -68,6 +68,14 @@ def chat(
     with Glean(**glean_kwargs) as glean:
         response = glean.client.chat.create(**kwargs)
 
+    import os
+    if os.getenv("GLEAN_DEBUG"):
+        import json
+        try:
+            print("RAW SDK RESPONSE:", json.dumps(response.model_dump(), indent=2)[:3000])
+        except Exception:
+            print("RAW SDK RESPONSE (repr):", repr(response)[:3000])
+
     return _parse_response(response)
 
 
