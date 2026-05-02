@@ -46,7 +46,7 @@ def chat(
             {"fragments": [{"text": message_text}]},
         ],
         "saveChat": save_chat,
-        "stream": False,
+        "stream": True,
     }
     if chat_session_id:
         payload["chatSessionId"] = chat_session_id
@@ -77,11 +77,6 @@ def _build_context_block(results: list[SearchResult]) -> str:
     return "\n".join(lines)
 
 
-@retry(
-    stop=stop_after_attempt(3),
-    wait=wait_exponential(multiplier=1, min=1, max=8),
-    reraise=True,
-)
 def _post_chat(payload: dict, *, cfg: Config) -> ChatResponse:
     headers = {
         "Authorization": f"Bearer {cfg.chat_token}",
@@ -91,16 +86,29 @@ def _post_chat(payload: dict, *, cfg: Config) -> ChatResponse:
         headers["X-Glean-ActAs"] = cfg.act_as_email
     url = f"{cfg.base_url}/rest/api/v1/chat"
 
-    with httpx.Client(timeout=60) as client:
-        response = client.post(url, headers=headers, json=payload)
-        if not response.is_success:
-            print(f"  Chat error ({response.status_code}): {response.text}")
-        response.raise_for_status()
+    last_data: dict = {}
+    with httpx.Client(timeout=120) as client:
+        with client.stream("POST", url, headers=headers, json=payload) as response:
+            if not response.is_success:
+                body = response.read().decode()
+                print(f"  Chat error ({response.status_code}): {body}")
+                response.raise_for_status()
 
-    data = response.json()
-    if os.getenv("GLEAN_DEBUG"):
-        print("RAW CHAT RESPONSE:", json.dumps(data, indent=2)[:3000])
-    return _parse_chat_response(data)
+            for line in response.iter_lines():
+                if not line.startswith("data:"):
+                    continue
+                chunk = line[len("data:"):].strip()
+                if chunk in ("", "[DONE]"):
+                    continue
+                try:
+                    data = json.loads(chunk)
+                    last_data = data
+                    if os.getenv("GLEAN_DEBUG"):
+                        print("SSE chunk:", json.dumps(data, indent=2)[:500])
+                except json.JSONDecodeError:
+                    pass
+
+    return _parse_chat_response(last_data)
 
 
 def _parse_chat_response(data: dict) -> ChatResponse:
