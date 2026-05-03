@@ -13,7 +13,13 @@ Before indexing, `adddatasource` is called to register the datasource. In the sa
 
 Documents are batched (up to 50 per request) to stay within the API's payload limits. The `updatedAt` timestamp is set to the current time on each run, which allows re-indexing to update documents in-place.
 
-**URL regex auto-detection**: Each datasource is registered with a `urlRegex` that all document `viewURL`s must match. Rather than hardcoding URLs per datasource, the indexer lets the first failed request reveal the correct regex: Glean's 400 error body contains the exact pattern (e.g. `https://internal\.example\.com/policies/.*`). The Streamlit UI parses this, strips regex metacharacters to derive a base URL prefix, updates the in-memory config, and prompts the user to retry — without requiring any manual configuration lookup.
+**The viewURL problem**: In a production deployment, every document already has a canonical URL — a Confluence page, a Notion document, an internal wiki entry. The `viewURL` field is simply that URL. In this prototype, the documents are local Markdown files with no hosting, so a URL must be fabricated.
+
+The first attempt used a placeholder domain (`https://wiki.acme-corp.example.com/docs/{doc_id}`). This immediately failed with HTTP 400: Glean enforces a `urlRegex` per datasource, and every document's `viewURL` must match it. The datasource had been registered by a Glean admin with a specific URL pattern — one our fabricated URLs did not match.
+
+The initial fix was straightforward: read the regex from the error message and update the URL template to match it. But when the scope expanded to support multiple datasources, a new problem emerged: each datasource in the sandbox was registered by a different user with a different `urlRegex`. There is no API to query what a datasource's regex is — the only way to discover it is to attempt indexing and read the 400 error body.
+
+This led to the current design: the `viewURL` prefix is a configurable parameter (`url_prefix`) passed into `build_documents()`. The Streamlit UI exposes it as an editable field and auto-populates it from a known config table for recognized datasources. When indexing fails with a URL mismatch, the UI parses the regex from the error body using `re.search(r"URL Regex pattern (.+?) for the datasource", msg)`, strips regex metacharacters to produce a usable base URL, updates the in-memory config, and prompts the user to retry. The correct URL namespace is discovered from the API itself rather than requiring prior knowledge of each datasource's configuration.
 
 ### Glean Search API
 
