@@ -87,6 +87,36 @@ The key design choice is to let Glean handle both retrieval (Search API) and gen
 
 ---
 
+## 3. MCP Tool Design
+
+### Single Tool, Full Pipeline
+
+The MCP server exposes a single tool — `ask_glean` — rather than separate `search_glean` and `chat_glean` tools. The MCP client (Cursor, Claude Desktop) does not need to know how the pipeline works internally or how to coordinate two tools in sequence. It asks a question and gets an answer. Keeping the interface at the level of intent rather than implementation makes the tool more useful to an AI agent and more robust to future pipeline changes.
+
+### `datasource_filter` as a Call-Time Parameter
+
+The datasource is exposed as an optional parameter on the tool rather than fixed at the environment variable level. This means the same running MCP server instance can search across different datasources depending on what the question requires — the calling agent can specify `datasource_filter="interviewds2"` on one turn and `datasource_filter="interviewds"` on the next without restarting the server or changing configuration.
+
+This mirrors the same principle applied in the Streamlit UI: datasource as a runtime choice, not a deploy-time constant. In a real enterprise deployment, an agent could route questions to the correct datasource based on the topic — HR questions to the HR datasource, engineering questions to the engineering datasource — using the same tool.
+
+### `chat_session_id` and Stateless Design
+
+The MCP tool is intentionally stateless. It does not persist `chat_session_id` between calls. The caller is responsible for threading it explicitly if multi-turn continuity is needed. This is a deliberate trade-off: a stateless tool is simpler, more predictable, and composable — any agent or client can call it without worrying about hidden session state. The Streamlit UI, by contrast, manages `chat_id` automatically because it owns the session lifecycle.
+
+### stdio Transport
+
+The MCP server runs over stdio rather than HTTP. This is the standard transport for IDE-integrated MCP tools (Cursor, Claude Desktop). It means no port configuration, no network exposure, and the process lifecycle is managed entirely by the MCP client — it starts the process when needed and terminates it when done.
+
+### Citation Merging
+
+The Chat API returns citations in its response, but they often carry minimal metadata. The search results returned earlier in the pipeline have richer metadata — title, URL, datasource, snippet. `_merge_sources()` uses search results as the primary source of truth for citations and supplements with any additional Chat API citations not already covered. The result is that every source shown to the user has a title, URL, and a snippet excerpt — regardless of what the Chat API chose to cite.
+
+### Markdown Output
+
+The tool returns a formatted Markdown string with `## Answer` and `## Sources` sections rather than a structured JSON object. This renders directly in Cursor's agent chat and Claude Desktop without any client-side rendering logic. The trade-off is that it is harder to parse programmatically, but for the intended use case — a human reading answers in an IDE — readability takes priority.
+
+---
+
 ## 4. Development Approach and Product Decisions
 
 ### CLI Pipeline as Triage Layer
@@ -107,7 +137,7 @@ The result is a UI where a user can switch datasources, index documents into any
 
 ---
 
-## 3. Key Tradeoffs and Limitations
+## 5. Key Tradeoffs and Limitations
 
 ### What works well
 
