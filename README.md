@@ -267,8 +267,6 @@ glean-mcp-exercise/
 ├── pyproject.toml              # Package definition and dependencies
 ├── .env.example                # Environment variable template
 ├── README.md                   # This file
-├── DESIGN.md                   # Architecture and design decisions
-├── TROUBLESHOOTING.md          # Full debugging log
 ├── scripts/
 │   ├── chat_ui.py              # Streamlit web UI
 │   └── test_pipeline.py        # End-to-end smoke test + interactive loop
@@ -282,7 +280,7 @@ glean-mcp-exercise/
 │       ├── chat.py             # Glean Chat API client (via glean-api-client SDK)
 │       └── mcp_server.py       # FastMCP server exposing ask_glean tool
 └── data/
-    └── documents/              # Sample internal knowledge-base articles (Markdown)
+    └── documents/              # Markdown files indexed into Glean
         ├── hr_pto_policy.md
         ├── engineering_onboarding.md
         ├── security_policy.md
@@ -290,7 +288,9 @@ glean-mcp-exercise/
         ├── benefits_guide.md
         ├── api_rate_limits.md
         ├── product_roadmap_2025.md
-        └── remote_work_policy.md
+        ├── remote_work_policy.md
+        ├── DESIGN.md           # Architecture and design decisions
+        └── TROUBLESHOOTING.md  # Full debugging log
 ```
 
 ---
