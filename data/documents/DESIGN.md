@@ -85,11 +85,10 @@ The key design choice is to let Glean handle both retrieval (Search API) and gen
 
 ### What works well
 
-- **Single vendor, consistent quality.** Because both retrieval and generation are handled by Glean, the relevance signals from the Search index directly inform the generation model. There is no embedding mismatch that can arise when using an external vector store with a different LLM.
-- **Zero vector infrastructure.** A traditional RAG stack requires a vector database, an embedding model, a chunking strategy, and reconciliation with source updates. Glean's Indexing API absorbs all of that.
-- **Live corpus updates.** Re-running `glean-index` or clicking **Index this datasource** in the UI re-indexes all documents without needing to rebuild an external vector store.
-- **Multi-turn conversation.** The Glean Chat API maintains session context via `chat_id`. The Streamlit UI and test script thread this automatically across turns.
-- **Runtime datasource switching.** The Streamlit UI lets users switch between datasources without restarting the app. Conversation history clears automatically on switch.
+- **Live corpus updates.** Setting `updatedAt` to the current time on every indexing run means documents are updated in-place rather than duplicated. Re-running `glean-index` or clicking **Index this datasource** in the UI is sufficient to reflect any document changes.
+- **Multi-turn conversation.** The Glean Chat API maintains session context via `chat_id`. Rather than exposing this as a manual concern, the Streamlit UI and test script thread it automatically across turns — the caller only needs to manage it explicitly when using the MCP tool.
+- **Runtime datasource switching.** Datasource is treated as a runtime parameter rather than a deploy-time constant. The Streamlit UI lets users switch datasources mid-session; conversation history clears automatically on switch to avoid context bleed from the previous datasource.
+- **URL regex auto-detection.** Rather than requiring manual configuration of per-datasource URL patterns, the indexer extracts the correct pattern directly from Glean's 400 error response and retries — making the indexer work against any pre-configured datasource without prior knowledge of its URL schema.
 
 ### Limitations and tradeoffs
 
