@@ -24,7 +24,7 @@ User Question
                     └────────┬────────┘
                              │  retrieved docs (titles, URLs, snippets)
                     ┌────────▼────────┐
-                    │  Glean Chat     │  POST /rest/api/v1/chat
+                    │  Glean Chat     │  glean.client.chat.create()
                     │   (chat.py)     │  → grounded answer + citations
                     └────────┬────────┘
                              │
@@ -40,19 +40,19 @@ Separate step (run once or via UI):
 ```
 
 **Data flow:**
-1. **Index** (one-time or via Streamlit UI): reads 8 Markdown documents from `data/documents/`, registers the datasource, and POSTs them to the Glean Indexing API. The indexer auto-detects the correct `viewURL` prefix from Glean's error response if there is a URL regex mismatch.
+1. **Index** (one-time or via Streamlit UI): reads 8 Markdown documents from `data/documents/`, registers the datasource, and POSTs them to the Glean Indexing API. The indexer auto-detects the correct `viewURL` prefix from Glean's 400 error response if there is a URL regex mismatch.
 2. **Search**: on each question, `search.py` queries the Glean Search API for the top-N most relevant documents, filtered to the active datasource.
-3. **Chat**: `chat.py` injects retrieved snippets as grounding context and calls the Glean Chat API to generate a cited answer.
+3. **Chat**: `chat.py` injects retrieved snippets as a numbered grounding context block and calls the Glean Chat API (via the official `glean-api-client` SDK) to generate a cited answer.
 4. **MCP**: `mcp_server.py` wraps this pipeline as a single `ask_glean` tool callable from any MCP client.
 
 ---
 
 ## Prerequisites
 
-- Python 3.11+
+- Python 3.10+
 - A Glean sandbox instance with:
   - An **Indexing API token** (Admin → Setup → APIs & Connectors → API Tokens → type: Indexing)
-  - A **User/Client API token** (Admin → Setup → APIs & Connectors → API Tokens → type: User)
+  - A **User/Client API token** (Admin → Setup → APIs & Connectors → API Tokens → type: User or Global)
 
 ---
 
@@ -81,10 +81,12 @@ cp .env.example .env
 Edit `.env`:
 
 ```dotenv
-GLEAN_INSTANCE=your-instance        # subdomain, e.g. "acme" from acme.glean.com
-GLEAN_INDEXING_TOKEN=glean_idx_...  # Indexing API token
-GLEAN_USER_TOKEN=glean_...          # User/Client API token
-GLEAN_DATASOURCE=interviewds        # Default datasource (switchable at runtime)
+GLEAN_INSTANCE=your-instance          # subdomain, e.g. "acme" from acme.glean.com
+GLEAN_INDEXING_TOKEN=glean_idx_...    # Indexing API token
+GLEAN_USER_TOKEN=glean_...            # Search API token
+GLEAN_CHAT_TOKEN=glean_...            # Chat/Client API token (falls back to GLEAN_USER_TOKEN)
+GLEAN_DATASOURCE=interviewds          # Datasource to search (switchable at runtime)
+GLEAN_ACT_AS=you@yourcompany.com      # Required when using a Global token type
 ```
 
 ---
@@ -105,30 +107,31 @@ Then open `http://localhost:8501` in your browser.
 ### Streamlit Features
 
 **Sidebar:**
-- **Datasource selector**: switch between `interviewds`, `interviewds2`, `interviewds4`, `interviewds5`, `interviewds6` — takes effect on the next question, no reload needed
-- **Index Documents button**: indexes the 8 sample documents into the currently selected datasource. The indexer auto-detects the correct URL prefix from Glean's error response if the datasource was registered with a different `urlRegex`
+- **Search results to use**: slider controlling how many search results are injected as context (1–10, default 5)
+- **Datasource filter**: switch datasources at runtime — conversation history clears automatically on change
+- **Document URL prefix**: the base URL prepended to document slugs for indexing; auto-populated from the known datasource config table and auto-corrected on URL regex mismatch errors
+- **Object type**: the Glean object type used when indexing (e.g. `KnowledgeArticle` for `interviewds`, `Article` for `interviewds2`–`interviewds6`); auto-populated from the known config table
+- **Index this datasource**: indexes the 8 sample documents into the currently selected datasource. On URL regex mismatch the correct prefix is extracted from Glean's error message and shown as a warning — click again to retry with the corrected prefix
+- **Show sources**: toggle source citations on/off in chat responses
+- **Clear conversation**: resets chat history and `chat_id`
 
 **Chat:**
 - Ask any natural-language question
-- Responses include a grounded answer and numbered source citations
-- Multi-turn conversation is supported via `chat_id` threading
+- Responses include a grounded answer with numbered source citations
+- Multi-turn conversation is maintained automatically via `chat_id` threading
 
 ### Datasource Switching
 
-Each datasource in the shared sandbox was registered by a different user with its own `urlRegex`. The app handles this automatically:
+Each datasource in the shared sandbox was registered with its own `urlRegex`. The app handles indexing into any datasource without knowing its URL schema upfront:
 
-1. You select a datasource and click **Index Documents**
-2. If the document `viewURL` doesn't match the datasource's registered regex, Glean returns a 400 error with the exact regex in the message
-3. The indexer parses this error, extracts the correct URL prefix, and prompts you to retry
-4. A yellow warning in the UI shows the corrected prefix that was detected
-
-This means you can switch to any datasource and index successfully without knowing its URL schema upfront.
+1. Select a datasource and click **Index this datasource**
+2. If the document `viewURL` doesn't match the datasource's regex, Glean returns a 400 with the exact regex in the error body
+3. The UI parses the error, strips regex metacharacters to derive the correct URL prefix, and shows a yellow warning
+4. Click **Index this datasource** again — it retries with the corrected prefix
 
 ---
 
 ## Indexing via CLI
-
-You can also index documents from the command line:
 
 ```bash
 glean-index
@@ -158,6 +161,16 @@ Note: It may take a few minutes for documents to appear in search results.
 
 ---
 
+## End-to-End Test Script
+
+```bash
+python scripts/test_pipeline.py
+```
+
+Runs two hardcoded questions (`"What is the PTO policy?"` and `"Are there multiple companies PTO policies here?"`) as a smoke test, then drops into an interactive prompt for further questions. Session ID is threaded through all turns for multi-turn continuity. Type `quit` to exit.
+
+---
+
 ## Using the MCP Tool in Cursor
 
 Add this to your Cursor MCP configuration (`~/.cursor/mcp.json`):
@@ -171,7 +184,9 @@ Add this to your Cursor MCP configuration (`~/.cursor/mcp.json`):
         "GLEAN_INSTANCE": "your-instance",
         "GLEAN_INDEXING_TOKEN": "glean_idx_...",
         "GLEAN_USER_TOKEN": "glean_...",
-        "GLEAN_DATASOURCE": "interviewds"
+        "GLEAN_CHAT_TOKEN": "glean_...",
+        "GLEAN_DATASOURCE": "interviewds",
+        "GLEAN_ACT_AS": "you@yourcompany.com"
       }
     }
   }
@@ -225,7 +240,9 @@ Add to `~/Library/Application Support/Claude/claude_desktop_config.json` (macOS)
         "GLEAN_INSTANCE": "your-instance",
         "GLEAN_INDEXING_TOKEN": "glean_idx_...",
         "GLEAN_USER_TOKEN": "glean_...",
-        "GLEAN_DATASOURCE": "interviewds"
+        "GLEAN_CHAT_TOKEN": "glean_...",
+        "GLEAN_DATASOURCE": "interviewds",
+        "GLEAN_ACT_AS": "you@yourcompany.com"
       }
     }
   }
@@ -254,18 +271,18 @@ glean-mcp-exercise/
 ├── TROUBLESHOOTING.md          # Full debugging log
 ├── scripts/
 │   ├── chat_ui.py              # Streamlit web UI
-│   └── test_pipeline.py        # End-to-end pipeline test script
+│   └── test_pipeline.py        # End-to-end smoke test + interactive loop
 ├── src/
 │   └── glean_chatbot/
 │       ├── __init__.py
 │       ├── config.py           # Environment-based configuration
 │       ├── models.py           # Pydantic models for API payloads
-│       ├── indexer.py          # Glean Indexing API client + CLI
+│       ├── indexer.py          # Glean Indexing API client + CLI entry point
 │       ├── search.py           # Glean Search API client
-│       ├── chat.py             # Glean Chat API client
-│       └── mcp_server.py       # MCP server (ask_glean tool)
+│       ├── chat.py             # Glean Chat API client (via glean-api-client SDK)
+│       └── mcp_server.py       # FastMCP server exposing ask_glean tool
 └── data/
-    └── documents/              # Sample internal knowledge-base articles
+    └── documents/              # Sample internal knowledge-base articles (Markdown)
         ├── hr_pto_policy.md
         ├── engineering_onboarding.md
         ├── security_policy.md
@@ -280,13 +297,16 @@ glean-mcp-exercise/
 
 ## Environment Variables
 
-| Variable | Required | Description |
-|---|---|---|
-| `GLEAN_INSTANCE` | Yes | Glean instance subdomain (e.g. `support-lab`) |
-| `GLEAN_INDEXING_TOKEN` | Yes | Token for the Indexing API |
-| `GLEAN_USER_TOKEN` | Yes | Token for Search and Chat APIs |
-| `GLEAN_DATASOURCE` | No | Default datasource (default: `interviewds`). Overridable at runtime via the Streamlit UI or as a parameter to `ask_glean`. |
-| `GLEAN_BASE_URL` | No | Override the backend URL (default: `https://{instance}-be.glean.com`) |
+| Variable | Required | Default | Description |
+|---|---|---|---|
+| `GLEAN_INSTANCE` | Yes | — | Glean instance subdomain (e.g. `support-lab`) |
+| `GLEAN_INDEXING_TOKEN` | Yes | — | Bearer token for the Indexing API |
+| `GLEAN_USER_TOKEN` | Yes | — | Bearer token for the Search API |
+| `GLEAN_CHAT_TOKEN` | No | `GLEAN_USER_TOKEN` | Bearer token for the Chat API; falls back to `GLEAN_USER_TOKEN` if not set |
+| `GLEAN_DATASOURCE` | No | `glean-mcp-exercise` | Default datasource for search and indexing; overridable at runtime via the Streamlit UI or as a parameter to `ask_glean` |
+| `GLEAN_ACT_AS` | No | — | Email address to impersonate; required when using a Global token type (`X-Glean-ActAs` header) |
+| `GLEAN_BASE_URL` | No | `https://{instance}-be.glean.com` | Override the Glean backend base URL |
+| `GLEAN_DEBUG` | No | — | Set to any non-empty value to print the raw Chat API SDK response to stdout |
 
 ---
 
@@ -294,6 +314,6 @@ glean-mcp-exercise/
 
 - **Shared sandbox datasources**: The sandbox datasources (`interviewds` through `interviewds6`) are shared across multiple users. Each was registered with a different `urlRegex`, and documents from other users are visible in search results. In production, each team would have an isolated datasource with its own ACL.
 - **`allowAnonymousAccess: true`**: Documents are indexed with open permissions for prototype simplicity. Production deployments would use per-user or per-group ACLs tied to identity providers.
-- **No streaming**: The Glean Chat API in this sandbox returns a complete JSON response rather than a chunked stream. The client uses `create()` (non-streaming) accordingly.
-- **`chat_id` and datasource switching**: Switching datasources mid-conversation carries over the `chat_id` from the previous session. The prior chat context may reference documents from the old datasource. A production implementation would clear `chat_id` on datasource change.
-- **IP allowlisting**: The Indexing API requires requests to originate from allowlisted IPs. The indexer must be run locally or from a server with a static IP that has been allowlisted. Cloud execution environments (e.g. Claude Code, GitHub Actions) will be rejected unless their egress IP is allowlisted or routed through a Cloud NAT with a static IP.
+- **No streaming**: The Glean Chat API in this sandbox returns a complete JSON response rather than a chunked stream. The SDK's `create_stream()` raises a `GleanError` on this sandbox; `create()` is used instead.
+- **`chat_id` and datasource switching**: The Streamlit UI clears `chat_id` automatically when the datasource changes. The MCP tool requires the caller to manage `chat_session_id` explicitly across turns.
+- **IP allowlisting**: The Indexing API requires requests to originate from allowlisted IPs. The indexer must be run locally or from a server with a static IP that has been allowlisted. Cloud execution environments will be rejected unless their egress IP is allowlisted.
