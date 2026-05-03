@@ -81,6 +81,26 @@ The key design choice is to let Glean handle both retrieval (Search API) and gen
 
 ---
 
+## 4. Development Approach and Product Decisions
+
+### CLI Pipeline as Triage Layer
+
+Throughout development, `scripts/test_pipeline.py` served as the primary triage tool for isolating whether errors originated in the code, the API, or the UI layer. When the Streamlit UI surfaced an error it was not always clear whether the problem was a UI bug, a bad API call, or a misconfiguration — and UI errors often obscured the real cause.
+
+A specific example: selecting `interviewds2` in the Streamlit UI showed an error suggesting the datasource was not indexed and required admin privileges. Running the same question through `test_pipeline.py` with `GLEAN_DATASOURCE=interviewds2` returned results immediately — proving the datasource was indexed and fully accessible. The UI error was a red herring. The CLI triage revealed the real issue: `interviewds2` uses object type `Article` rather than `KnowledgeArticle`, which the indexer had hardcoded. That finding drove the decision to make `object_type` a configurable parameter and add it as an editable field in the sidebar.
+
+This pattern — reproduce in the CLI pipeline first, fix the root cause, then verify in the UI — was applied consistently throughout development and is why `test_pipeline.py` exists as a standalone script rather than being embedded in the UI code.
+
+### Datasource Flexibility as a Product Decision
+
+The brief called for a single datasource. Rather than hardcoding `interviewds` as a constant, the datasource was treated as a runtime parameter from the start — configurable via environment variable, overridable in the Streamlit UI, and passable as a parameter to the MCP tool.
+
+This was a deliberate product decision: in a real enterprise deployment, different teams would use different datasources. Locking the tool to a single datasource at the code level would make it a demo, not a tool. Treating it as a runtime parameter required solving problems that a hardcoded approach would have hidden — specifically, that each datasource in the sandbox has its own `urlRegex` and `objectType`. Solving those led to the URL regex auto-detection from error responses and the configurable object type field.
+
+The result is a UI where a user can switch datasources, index documents into any of them, and query across them — without touching code or restarting the app.
+
+---
+
 ## 3. Key Tradeoffs and Limitations
 
 ### What works well
