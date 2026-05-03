@@ -106,3 +106,54 @@ A chronological record of every issue encountered and resolved while getting the
 ## ✅ Full Pipeline Working
 
 Search returns 5 relevant documents → Chat generates a grounded, cited answer from the `messageType == "CONTENT"` message fragments → Streamlit UI and MCP tool both functional.
+
+---
+
+## 15. Multi-Turn – chat_session_id Unexpected Keyword Argument
+**Error:** `TypeError: chat() got an unexpected keyword argument 'chat_session_id'`
+**Cause:** The `glean-api-client` SDK uses `chat_id` as the parameter name, not `chat_session_id`.
+**Fix:** Changed `kwargs["chat_session_id"]` to `kwargs["chat_id"]` in `chat.py`.
+
+---
+
+## 16. Streamlit UI – Interactive Chat Interface
+**What:** Built `scripts/chat_ui.py` — a Streamlit web app wrapping the RAG pipeline with a sidebar (num_results slider, datasource filter, sources toggle, clear button) and multi-turn chat history backed by `st.session_state`.
+
+---
+
+## 17. Streamlit UI – Datasource Switching Clears Conversation
+**What:** Switching datasources mid-conversation would carry over `chat_id` context from the previous datasource.
+**Fix:** Added `active_datasource` to session state. On each render, if the datasource field changed, `messages` and `chat_session_id` are cleared automatically before the next question is processed.
+
+---
+
+## 18. Streamlit UI – One-Click Indexer
+**What:** Added an **"Index this datasource"** button to the sidebar that runs `register_datasource()` + `build_documents()` + `_index_documents()` inline with progress feedback — so documents can be indexed into any datasource without leaving the UI.
+
+---
+
+## 19. Indexing – URL Regex Mismatch Across Datasources
+**Error:** `HTTP 400 – View URL … does not match the URL Regex pattern … for the datasource`
+**Cause:** Each sandbox datasource was registered by a different user with a different `urlRegex`. Hardcoding `https://internal.example.com/policies/` only works for `interviewds`.
+**Fix 1:** Made the document URL prefix configurable — added `url_prefix` param to `build_documents()` and a **Document URL prefix** text input to the Streamlit sidebar.
+**Fix 2:** Added auto-detection: when a URL mismatch 400 is returned, the error body contains the exact regex. The UI parses it with `re.search(r"URL Regex pattern (.+?) for the datasource", msg)`, strips metacharacters (`re.sub(r"/?\.?\*$", "")` then `.replace("\\.", ".")`), updates the in-memory config, and shows a yellow warning prompting the user to retry.
+
+---
+
+## 20. Indexing – Object Type Mismatch Across Datasources
+**Error:** `HTTP 400 – Object definitions not found for object types: KnowledgeArticle`
+**Cause:** `interviewds` uses object type `KnowledgeArticle`; `interviewds2`–`interviewds6` use `Article`. The indexer had `KnowledgeArticle` hardcoded.
+**Fix:** Made the object type configurable — added `object_type` param to `build_documents()` and an **Object type** text input to the Streamlit sidebar. Added a `DATASOURCE_CONFIGS` lookup table in the UI that auto-populates both the URL prefix and object type for known datasources.
+
+---
+
+## 21. Test Script – Hardcoded Follow-Up and Interactive Loop
+**What:** Extended `scripts/test_pipeline.py` to:
+- Run a hardcoded follow-up question (`"Are there multiple companies PTO policies here?"`) immediately after the initial smoke test, threading the `chat_id` for multi-turn continuity
+- Drop into an interactive prompt loop so any question can be asked without restarting the script; type `quit` to exit
+
+---
+
+## ✅ Full Feature Set Complete
+
+End-to-end RAG pipeline → Streamlit UI with runtime datasource switching and one-click indexer → MCP tool → multi-turn conversation → auto URL prefix detection → configurable object types per datasource.
