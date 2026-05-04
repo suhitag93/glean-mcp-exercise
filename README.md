@@ -267,6 +267,9 @@ glean-mcp-exercise/
 ├── pyproject.toml              # Package definition and dependencies
 ├── .env.example                # Environment variable template
 ├── README.md                   # This file
+├── submissions/
+│   ├── DESIGN.md               # Architecture and design decisions
+│   └── TROUBLESHOOTING.md      # Full debugging log
 ├── scripts/
 │   ├── chat_ui.py              # Streamlit web UI
 │   └── test_pipeline.py        # End-to-end smoke test + interactive loop
@@ -289,8 +292,14 @@ glean-mcp-exercise/
         ├── api_rate_limits.md
         ├── product_roadmap_2025.md
         ├── remote_work_policy.md
-        ├── DESIGN.md           # Architecture and design decisions
-        └── TROUBLESHOOTING.md  # Full debugging log
+        ├── api_rate_limits.md
+        ├── benefits_guide.md
+        ├── engineering_onboarding.md
+        ├── hr_pto_policy.md
+        ├── incident_response_runbook.md
+        ├── product_roadmap_2025.md
+        ├── remote_work_policy.md
+        └── security_policy.md
 ```
 
 ---
