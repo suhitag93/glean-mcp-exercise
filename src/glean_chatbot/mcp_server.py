@@ -27,9 +27,11 @@ from .search import search
 mcp = FastMCP(
     name="glean-rag-chatbot",
     instructions=(
-        "Use this server to ask questions about the Acme Corp internal knowledge base. "
-        "The chatbot retrieves relevant documents from Glean and generates a grounded answer "
-        "with source citations. Provide a clear, specific question for best results."
+        "Use this server to ask questions about enterprise knowledge bases indexed in Glean. "
+        "The chatbot retrieves relevant documents from Glean Search and generates a grounded answer "
+        "with source citations. You can target a specific datasource using the datasource_filter "
+        "parameter — if omitted, the server's default datasource is used. "
+        "Provide a clear, specific question for best results."
     ),
 )
 
