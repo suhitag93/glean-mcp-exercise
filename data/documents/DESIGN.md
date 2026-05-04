@@ -4,60 +4,59 @@
 
 ### Glean Indexing API
 
-**Endpoint:** `POST /api/index/v1/indexdocuments`  
-**Auth:** Bearer token (Indexing API token)
+**How it's used:** Ingests 8 Markdown documents into a Glean datasource. Each document is mapped to the `GleanDocument` schema — `id` (filename slug), `title` (first H1), `body` (full Markdown), `summary` (first paragraph), `viewURL`, and `objectType`. Documents are batched up to 50 per request; `updatedAt` is set to the current time so re-indexing updates in-place.
 
-The Indexing API is used once (or on demand via the Streamlit UI) to ingest a corpus of 8 Markdown documents that simulate a real enterprise knowledge base — HR policies, engineering runbooks, security guidelines, and product plans.
+**Challenges faced:**
+- Datasource registration (`adddatasource`) returned 400/403 — sandbox datasources are pre-configured by admins, the indexing token has no create/modify permission
+- Document `viewURL`s must match the datasource's registered `urlRegex`. Initial placeholder URLs failed immediately. When scope expanded to multiple datasources, each had a different `urlRegex` with no API to query it upfront
+- Each datasource uses a different `objectType` (`KnowledgeArticle` vs `Article`), which was only discoverable through a failed indexing attempt
 
-Before indexing, `adddatasource` is called to register the datasource. In the sandbox this call returns 400/403 (datasources are pre-configured by admins), so the error is caught and skipped gracefully — indexing proceeds directly. Each document is mapped to the `GleanDocument` schema with fields: `id` (stable slug from filename), `title` (from the first H1 heading), `body` (full Markdown text), `summary` (first non-heading paragraph), `viewURL` (canonical URL matching the datasource's registered regex), and `objectType` (configurable; `KnowledgeArticle` for `interviewds`, `Article` for `interviewds2`–`interviewds6`).
+**Path to solution:**
+- Skip `adddatasource` gracefully on 400/403/409 and proceed directly to indexing
+- Made `url_prefix` and `object_type` configurable parameters on `build_documents()`. On URL mismatch, the UI parses the correct regex from Glean's 400 error body, strips metacharacters to derive a base URL, and prompts retry — no manual lookup needed
+- Added a `DATASOURCE_CONFIGS` lookup table in the UI to auto-populate known values per datasource
 
-Documents are batched (up to 50 per request) to stay within the API's payload limits. The `updatedAt` timestamp is set to the current time on each run, which allows re-indexing to update documents in-place.
+**Confirmed working:** 8 documents indexed into `interviewds` → searchable within 1–5 minutes → returned in search results with correct titles, URLs, and snippets.
 
-**The viewURL problem**: In a production deployment, every document already has a canonical URL — a Confluence page, a Notion document, an internal wiki entry. The `viewURL` field is simply that URL. In this prototype, the documents are local Markdown files with no hosting, so a URL must be fabricated.
-
-The first attempt used a placeholder domain (`https://wiki.acme-corp.example.com/docs/{doc_id}`). This immediately failed with HTTP 400: Glean enforces a `urlRegex` per datasource, and every document's `viewURL` must match it. The datasource had been registered by a Glean admin with a specific URL pattern — one our fabricated URLs did not match.
-
-The initial fix was straightforward: read the regex from the error message and update the URL template to match it. But when the scope expanded to support multiple datasources, a new problem emerged: each datasource in the sandbox was registered by a different user with a different `urlRegex`. There is no API to query what a datasource's regex is — the only way to discover it is to attempt indexing and read the 400 error body.
-
-This led to the current design: the `viewURL` prefix is a configurable parameter (`url_prefix`) passed into `build_documents()`. The Streamlit UI exposes it as an editable field and auto-populates it from a known config table for recognized datasources. When indexing fails with a URL mismatch, the UI parses the regex from the error body using `re.search(r"URL Regex pattern (.+?) for the datasource", msg)`, strips regex metacharacters to produce a usable base URL, updates the in-memory config, and prompts the user to retry. The correct URL namespace is discovered from the API itself rather than requiring prior knowledge of each datasource's configuration.
+---
 
 ### Glean Search API
 
-**Endpoint:** `POST /rest/api/v1/search`  
-**Auth:** Bearer token (`GLEAN_USER_TOKEN`); Global tokens also require `X-Glean-ActAs: <email>` header
+**How it's used:** On every question, the user's query is sent verbatim to the Search API. Returns the top-N documents ranked by Glean's hybrid semantic + keyword search. Key parameters: `pageSize` (default 5, max 10) and `datasourceFilter` (optional, scopes results to the active datasource).
 
-On every call to `ask_glean` or a Streamlit chat message, the user's question is sent verbatim to the Search API with retry logic (3 attempts, exponential backoff via `tenacity`). Glean's search engine returns the top-N documents ranked by relevance — leveraging its native semantic and keyword hybrid search over the indexed corpus.
+**Challenges faced:**
+- Global token type requires `X-Glean-ActAs: <email>` on every request — missing header returned HTTP 400
+- The email must be a registered user in the Glean instance — personal Gmail was rejected with "Invalid identity"
+- Search result snippets came back in three different shapes: plain string, `{"snippet": "str"}`, and `{"snippet": {"text": "..."}}` — assuming one shape caused an `AttributeError`
 
-Key request parameters used:
-- `pageSize`: configured by the caller (default 5, max 10)
-- `datasourceFilter`: optional — narrows results to the active datasource
+**Path to solution:**
+- Added `GLEAN_ACT_AS` env var and injected `X-Glean-ActAs` header into all Search requests
+- Used the sandbox login email (`alex@glean-sandbox.com`) for `GLEAN_ACT_AS`
+- Wrote `_extract_snippet_text()` to defensively handle all three observed shapes
+- Added retry logic (3 attempts, exponential backoff via `tenacity`) for transient failures
 
-The response is parsed into `SearchResult` objects that carry the document title, URL, datasource, document ID, and the most relevant text snippets. Snippet parsing handles all three shapes observed in the API response: plain string, `{"snippet": "str"}`, and `{"snippet": {"text": "..."}}`.
+**Confirmed working:** Search returns 5 ranked results with titles, URLs, and snippets for a given question against `interviewds`.
+
+---
 
 ### Glean Chat API
 
-**SDK:** `glean-api-client` (`glean.api_client.Glean`) — `glean.client.chat.create()`  
-**Auth:** Bearer token (`GLEAN_CHAT_TOKEN`, falls back to `GLEAN_USER_TOKEN`); Global tokens require `X-Glean-ActAs` injected via a custom `httpx.Client` passed to the SDK constructor
+**How it's used:** Retrieved search results are formatted into a numbered context block prepended to the user's question, then sent to the Chat API to generate a grounded answer. Multi-turn conversation is supported by passing `chat_id` on subsequent calls.
 
-The Chat API is the answer-generation layer. The retrieved search results are formatted into a numbered context block and prepended to the user message:
+**Challenges faced:**
+- Raw HTTP with `stream: false` caused an indefinite `ReadTimeout` — the sandbox does not support non-streaming responses over raw HTTP
+- Switching to the official `glean-api-client` SDK introduced a new issue: `create_stream()` raised `GleanError: Unexpected response received` because the sandbox returns complete JSON, not SSE
+- The SDK has no built-in `act_as` parameter for injecting `X-Glean-ActAs`
+- `messageType` is a Python enum — `str(MessageType.CONTENT)` evaluates to `"MessageType.CONTENT"`, not `"CONTENT"`, causing the parser to always miss the answer
+- SDK uses `chat_id` not `chat_session_id` — caused `TypeError` on multi-turn calls
 
-```
-Use ONLY the following retrieved knowledge-base articles …
+**Path to solution:**
+- Used `glean.client.chat.create()` (non-streaming) — correct for this sandbox
+- Injected `X-Glean-ActAs` by passing a pre-configured `httpx.Client` to the SDK constructor
+- Parsed `messageType` via `getattr(msg_type, "value", str(msg_type)).upper()` to extract the raw enum string
+- Fixed multi-turn parameter name to `chat_id`
 
-[1] Paid Time Off (PTO) Policy
-    URL: https://internal.example.com/policies/hr_pto_policy
-    Content: <snippet>
-
-[2] Employee Benefits Guide
-    …
-
----
-Question: How many PTO days do employees get after 3 years?
-```
-
-The SDK response is parsed to find the message where `messageType == "CONTENT"` (a `MessageType` enum; compared via `.value` to avoid the `"MessageType.CONTENT" != "CONTENT"` pitfall). The text fragments from that message are concatenated into the final answer.
-
-Multi-turn conversation is supported by passing `chat_id` to the SDK on subsequent calls. The Streamlit UI and test script thread this automatically; the MCP tool requires the caller to pass `chat_session_id` explicitly.
+**Confirmed working:** Full pipeline — search returns 5 documents → chat generates a grounded cited answer → follow-up question maintains session context via `chat_id`.
 
 ---
 
