@@ -5,14 +5,18 @@ Usage (from repo root with venv active):
     streamlit run scripts/chat_ui.py
 """
 
+import os
 import re
 import sys
+import tempfile
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
 
 from dotenv import load_dotenv
-load_dotenv(Path(__file__).parent.parent / ".env")
+# Try the explicit path first; fall back to dotenv's automatic cwd search.
+load_dotenv(Path(__file__).resolve().parent.parent / ".env")
+load_dotenv()  # walks up from cwd — catches the case where __file__ is relative
 
 import streamlit as st
 
@@ -76,7 +80,6 @@ with st.sidebar:
 
             if uploaded_file is not None:
                 # Index only the uploaded file
-                import tempfile, os
                 with tempfile.NamedTemporaryFile(delete=False, suffix=".md", prefix=uploaded_file.name.replace(".md", "") + "_") as tmp:
                     tmp.write(uploaded_file.getvalue())
                     tmp_path = Path(tmp.name)
