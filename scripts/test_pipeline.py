@@ -14,8 +14,15 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
 
-from dotenv import load_dotenv
-load_dotenv(Path(__file__).parent.parent / ".env")
+from dotenv import find_dotenv, dotenv_values
+
+_dotenv_path = (
+    find_dotenv(raise_error_if_not_found=False, usecwd=False)
+    or find_dotenv(raise_error_if_not_found=False, usecwd=True)
+)
+for _k, _v in dotenv_values(_dotenv_path).items():
+    if _v is not None:
+        os.environ.setdefault(_k, _v)
 
 import httpx
 

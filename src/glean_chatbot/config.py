@@ -5,9 +5,16 @@ from __future__ import annotations
 import os
 from functools import lru_cache
 
-from dotenv import load_dotenv
+from dotenv import find_dotenv, dotenv_values
 
-load_dotenv()
+# Walk up from this file's directory to find and load .env.
+# find_dotenv() is more reliable than load_dotenv() with no args because it
+# uses the caller's __file__ location rather than cwd, which can differ in
+# Streamlit and subprocess contexts.
+_dotenv_path = find_dotenv(raise_error_if_not_found=False, usecwd=False)
+for _k, _v in dotenv_values(_dotenv_path).items():
+    if _v is not None:
+        os.environ.setdefault(_k, _v)
 
 
 @lru_cache(maxsize=1)

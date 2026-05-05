@@ -13,13 +13,16 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
 
-from dotenv import dotenv_values
+from dotenv import find_dotenv, dotenv_values
 
-# Explicitly load .env from the repo root and write values into os.environ.
-# Using dotenv_values + os.environ directly avoids all load_dotenv path-search
-# and override-flag issues that can occur in Streamlit's execution model.
-_env_file = Path(__file__).resolve().parent.parent / ".env"
-for _k, _v in dotenv_values(_env_file).items():
+# find_dotenv() walks up from this script's directory to locate .env, falling
+# back to a cwd-based search. Using dotenv_values + os.environ.setdefault
+# writes vars explicitly and avoids load_dotenv override-flag issues.
+_dotenv_path = (
+    find_dotenv(raise_error_if_not_found=False, usecwd=False)
+    or find_dotenv(raise_error_if_not_found=False, usecwd=True)
+)
+for _k, _v in dotenv_values(_dotenv_path).items():
     if _v is not None:
         os.environ.setdefault(_k, _v)
 
