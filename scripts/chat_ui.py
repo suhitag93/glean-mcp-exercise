@@ -48,18 +48,13 @@ with st.sidebar:
     num_results = st.slider("Search results to use", min_value=1, max_value=10, value=5)
     datasource = st.text_input("Datasource filter", value="interviewds")
 
-    default_url, default_obj = DATASOURCE_CONFIGS.get(
+    default_url, object_type = DATASOURCE_CONFIGS.get(
         datasource, ("https://internal.example.com/policies", "KnowledgeArticle")
     )
     doc_url_prefix = st.text_input(
         "Document URL prefix",
         value=default_url,
         help="Must match the URL regex configured for the datasource in Glean admin",
-    )
-    object_type = st.text_input(
-        "Object type",
-        value=default_obj,
-        help="Must match an object definition configured for the datasource in Glean admin",
     )
     if st.button("Index this datasource", help="Index all documents from data/documents/ into the selected datasource"):
         cfg = get_config()
@@ -87,9 +82,9 @@ with st.sidebar:
             msg = str(e)
             if "Object definitions not found" in msg or "object types" in msg:
                 st.error(
-                    f"Indexing failed: the object type **'{object_type}'** is not configured for "
-                    f"datasource **'{datasource}'**. Update the 'Object type' field to match what's "
-                    "defined for this datasource in the Glean admin console."
+                    f"Indexing failed: object type **'{object_type}'** is not configured for "
+                    f"datasource **'{datasource}'**. Add this datasource to the DATASOURCE_CONFIGS "
+                    "table in chat_ui.py with the correct object type."
                 )
             elif "does not match the URL Regex pattern" in msg:
                 # Extract the required regex from the error and derive a usable prefix
