@@ -96,7 +96,8 @@ GLEAN_ACT_AS=you@yourcompany.com      # Required when using a Global token type
 The Streamlit app is the primary interface for this prototype. It provides:
 - A **chat interface** for asking questions and receiving grounded answers with citations
 - A **datasource selector** in the sidebar to switch between available datasources at runtime
-- A **one-click indexer** to push documents into the selected datasource directly from the UI
+- A **file uploader** to index a single `.md` document directly from your device
+- A single **Index to datasource** button that handles both single-file and bulk indexing
 
 ```bash
 streamlit run scripts/chat_ui.py
@@ -108,10 +109,12 @@ Then open `http://localhost:8501` in your browser.
 
 **Sidebar:**
 - **Search results to use**: slider controlling how many search results are injected as context (1–10, default 5)
-- **Datasource filter**: switch datasources at runtime — conversation history clears automatically on change
-- **Document URL prefix**: the base URL prepended to document slugs for indexing; auto-populated from the known datasource config table and auto-corrected on URL regex mismatch errors
-- **Object type**: the Glean object type used when indexing (e.g. `KnowledgeArticle` for `interviewds`, `Article` for `interviewds2`–`interviewds6`); auto-populated from the known config table
-- **Index this datasource**: indexes the 8 sample documents into the currently selected datasource. On URL regex mismatch the correct prefix is extracted from Glean's error message and shown as a warning — click again to retry with the corrected prefix
+- **Select datasource**: dropdown with the available datasources (`interviewds` through `interviewds6`); conversation history clears automatically on change
+- **Upload a .md file (optional)**: upload a Markdown document from your device to index into the selected datasource
+- **Index to datasource**: single button with conditional logic:
+  - If a file is uploaded → indexes that file only into the selected datasource
+  - If no file is uploaded → indexes all documents from `data/documents/` into the selected datasource
+  - On URL regex mismatch Glean's error is parsed automatically to derive the correct URL prefix; click again to retry
 - **Show sources**: toggle source citations on/off in chat responses
 - **Clear conversation**: resets chat history and `chat_id`
 
@@ -120,18 +123,29 @@ Then open `http://localhost:8501` in your browser.
 - Responses include a grounded answer with numbered source citations
 - Multi-turn conversation is maintained automatically via `chat_id` threading
 
+### Indexing a Single Document via the UI
+
+To add a new document to the knowledge base without re-indexing everything:
+
+1. Select the target datasource from the dropdown
+2. Use **Upload a .md file** to choose a Markdown file from your device
+3. Click **Index to datasource** — only the uploaded file is sent to the Indexing API
+4. Wait 1–5 minutes for the document to become searchable in Glean
+
 ### Datasource Switching
 
 Each datasource in the shared sandbox was registered with its own `urlRegex`. The app handles indexing into any datasource without knowing its URL schema upfront:
 
-1. Select a datasource and click **Index this datasource**
+1. Select a datasource from the dropdown and click **Index to datasource**
 2. If the document `viewURL` doesn't match the datasource's regex, Glean returns a 400 with the exact regex in the error body
 3. The UI parses the error, strips regex metacharacters to derive the correct URL prefix, and shows a yellow warning
-4. Click **Index this datasource** again — it retries with the corrected prefix
+4. Click **Index to datasource** again — it retries with the corrected prefix
 
 ---
 
 ## Indexing via CLI
+
+The `glean-index` CLI command bulk-indexes all Markdown files in `data/documents/` into the datasource configured via `GLEAN_DATASOURCE`. Use this for the initial seed load or to re-index the full document set without opening the browser.
 
 ```bash
 glean-index
@@ -158,6 +172,14 @@ Step 3/3 – Sending documents to Glean Indexing API …
 Done. Documents have been submitted for indexing.
 Note: It may take a few minutes for documents to appear in search results.
 ```
+
+To index into a different datasource without editing `.env`, override the variable inline:
+
+```bash
+GLEAN_DATASOURCE=interviewds2 glean-index
+```
+
+For indexing a single file, use the Streamlit UI's file uploader instead of the CLI.
 
 ---
 
