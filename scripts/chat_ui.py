@@ -13,10 +13,15 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
 
-from dotenv import load_dotenv
-# Try the explicit path first; fall back to dotenv's automatic cwd search.
-load_dotenv(Path(__file__).resolve().parent.parent / ".env")
-load_dotenv()  # walks up from cwd — catches the case where __file__ is relative
+from dotenv import dotenv_values
+
+# Explicitly load .env from the repo root and write values into os.environ.
+# Using dotenv_values + os.environ directly avoids all load_dotenv path-search
+# and override-flag issues that can occur in Streamlit's execution model.
+_env_file = Path(__file__).resolve().parent.parent / ".env"
+for _k, _v in dotenv_values(_env_file).items():
+    if _v is not None:
+        os.environ.setdefault(_k, _v)
 
 import streamlit as st
 
