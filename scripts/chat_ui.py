@@ -38,25 +38,32 @@ st.caption("Ask anything about the Acme Corp knowledge base.")
 DATASOURCE_CONFIGS: dict[str, tuple[str, str]] = {
     "interviewds":  ("https://internal.example.com/policies", "KnowledgeArticle"),
     "interviewds2": ("https://internal.example.com/policies", "Article"),
+    "interviewds3": ("https://internal.example.com/policies", "Article"),
     "interviewds4": ("https://internal.example.com/policies", "Article"),
     "interviewds5": ("https://internal.example.com/policies", "Article"),
     "interviewds6": ("https://internal.example.com/policies", "Article"),
 }
 
+DATASOURCE_OPTIONS = ["interviewds", "interviewds2", "interviewds3", "interviewds4", "interviewds5", "interviewds6"]
+
 with st.sidebar:
     st.header("Settings")
     num_results = st.slider("Search results to use", min_value=1, max_value=10, value=5)
-    datasource = st.text_input("Datasource filter", value="interviewds")
+    datasource = st.selectbox("Select datasource", options=DATASOURCE_OPTIONS, index=0)
 
-    default_url, object_type = DATASOURCE_CONFIGS.get(
+    doc_url_prefix, object_type = DATASOURCE_CONFIGS.get(
         datasource, ("https://internal.example.com/policies", "KnowledgeArticle")
     )
-    doc_url_prefix = st.text_input(
-        "Document URL prefix",
-        value=default_url,
-        help="Must match the URL regex configured for the datasource in Glean admin",
+
+    st.divider()
+    st.subheader("Index to Datasource")
+    uploaded_file = st.file_uploader(
+        "Upload a .md file (optional)",
+        type=["md"],
+        help="If provided, indexes this file. If omitted, indexes all files from data/documents/.",
     )
-    if st.button("Index this datasource", help="Index all documents from data/documents/ into the selected datasource"):
+
+    if st.button("Index to datasource"):
         cfg = get_config()
         log = st.empty()
         try:
@@ -66,68 +73,73 @@ with st.sidebar:
                 indexing_token=cfg.indexing_token,
                 datasource=datasource,
             )
-            log.info("Loading documents…")
-            docs = build_documents(datasource, url_prefix=doc_url_prefix, object_type=object_type)
-            log.info(f"Indexing {len(docs)} documents into '{datasource}'…")
-            _index_documents(
-                docs,
-                base_url=cfg.base_url,
-                indexing_token=cfg.indexing_token,
-                datasource=datasource,
-            )
-            log.empty()
-            st.success(f"Indexed {len(docs)} documents into '{datasource}'. It may take a few minutes to appear in search.")
+
+            if uploaded_file is not None:
+                # Index only the uploaded file
+                import tempfile, os
+                with tempfile.NamedTemporaryFile(delete=False, suffix=".md", prefix=uploaded_file.name.replace(".md", "") + "_") as tmp:
+                    tmp.write(uploaded_file.getvalue())
+                    tmp_path = Path(tmp.name)
+                try:
+                    log.info(f"Indexing uploaded file '{uploaded_file.name}'…")
+                    doc = _markdown_to_glean_doc(
+                        tmp_path,
+                        datasource,
+                        url_prefix=doc_url_prefix,
+                        object_type=object_type,
+                    )
+                    # Use the original filename as the document ID
+                    doc.id = Path(uploaded_file.name).stem
+                    _index_documents(
+                        [doc],
+                        base_url=cfg.base_url,
+                        indexing_token=cfg.indexing_token,
+                        datasource=datasource,
+                    )
+                    log.empty()
+                    st.success(f"'{uploaded_file.name}' indexed into '{datasource}'. It may take a few minutes to appear in search.")
+                finally:
+                    os.unlink(tmp_path)
+            else:
+                # Index all documents from data/documents/
+                log.info("Loading documents…")
+                docs = build_documents(datasource, url_prefix=doc_url_prefix, object_type=object_type)
+                log.info(f"Indexing {len(docs)} documents into '{datasource}'…")
+                _index_documents(
+                    docs,
+                    base_url=cfg.base_url,
+                    indexing_token=cfg.indexing_token,
+                    datasource=datasource,
+                )
+                log.empty()
+                st.success(f"Indexed {len(docs)} documents into '{datasource}'. It may take a few minutes to appear in search.")
+
         except Exception as e:
             log.empty()
             msg = str(e)
             if "Object definitions not found" in msg or "object types" in msg:
                 st.error(
                     f"Indexing failed: object type **'{object_type}'** is not configured for "
-                    f"datasource **'{datasource}'**. Add this datasource to the DATASOURCE_CONFIGS "
-                    "table in chat_ui.py with the correct object type."
+                    f"datasource **'{datasource}'**. Update DATASOURCE_CONFIGS in chat_ui.py with the correct object type."
                 )
             elif "does not match the URL Regex pattern" in msg:
-                # Extract the required regex from the error and derive a usable prefix
                 m = re.search(r"URL Regex pattern (.+?) for the datasource", msg)
                 if m:
                     detected_regex = m.group(1)
-                    # Remove trailing wildcard (e.g. /.*  or .*) then unescape dots
                     detected_prefix = re.sub(r"/?\.?\*$", "", detected_regex)
                     detected_prefix = detected_prefix.replace("\\.", ".").rstrip("/")
                     DATASOURCE_CONFIGS[datasource] = (detected_prefix, object_type)
                     st.warning(
                         f"URL prefix auto-corrected to **`{detected_prefix}`** "
                         f"(detected from datasource regex `{detected_regex}`). "
-                        "Click **Index this datasource** again to retry."
+                        "Click **Index to datasource** again to retry."
                     )
                 else:
                     st.error(f"Indexing failed: {e}")
             else:
                 st.error(f"Indexing failed: {e}")
+
     st.divider()
-    st.subheader("Upload Document")
-    uploaded_file = st.file_uploader("Upload a .md file to index", type=["md"])
-    if uploaded_file is not None:
-        dest_path = DOCUMENTS_DIR / uploaded_file.name
-        if st.button("Index uploaded file"):
-            cfg = get_config()
-            try:
-                dest_path.write_bytes(uploaded_file.getvalue())
-                doc = _markdown_to_glean_doc(
-                    dest_path,
-                    datasource,
-                    url_prefix=doc_url_prefix,
-                    object_type=object_type,
-                )
-                _index_documents(
-                    [doc],
-                    base_url=cfg.base_url,
-                    indexing_token=cfg.indexing_token,
-                    datasource=datasource,
-                )
-                st.success(f"'{uploaded_file.name}' saved to data/documents/ and indexed into '{datasource}'.")
-            except Exception as e:
-                st.error(f"Upload indexing failed: {e}")
     show_sources = st.toggle("Show sources", value=True)
     st.divider()
     if st.button("Clear conversation"):
