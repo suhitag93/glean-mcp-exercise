@@ -18,7 +18,7 @@ import streamlit as st
 
 from glean_chatbot.chat import chat
 from glean_chatbot.config import get_config
-from glean_chatbot.indexer import build_documents, register_datasource, _index_documents
+from glean_chatbot.indexer import build_documents, register_datasource, _index_documents, _markdown_to_glean_doc, DOCUMENTS_DIR
 from glean_chatbot.search import search
 
 # ── Page config ──────────────────────────────────────────────────────────────
@@ -109,6 +109,30 @@ with st.sidebar:
                     st.error(f"Indexing failed: {e}")
             else:
                 st.error(f"Indexing failed: {e}")
+    st.divider()
+    st.subheader("Upload Document")
+    uploaded_file = st.file_uploader("Upload a .md file to index", type=["md"])
+    if uploaded_file is not None:
+        dest_path = DOCUMENTS_DIR / uploaded_file.name
+        if st.button("Index uploaded file"):
+            cfg = get_config()
+            try:
+                dest_path.write_bytes(uploaded_file.getvalue())
+                doc = _markdown_to_glean_doc(
+                    dest_path,
+                    datasource,
+                    url_prefix=doc_url_prefix,
+                    object_type=object_type,
+                )
+                _index_documents(
+                    [doc],
+                    base_url=cfg.base_url,
+                    indexing_token=cfg.indexing_token,
+                    datasource=datasource,
+                )
+                st.success(f"'{uploaded_file.name}' saved to data/documents/ and indexed into '{datasource}'.")
+            except Exception as e:
+                st.error(f"Upload indexing failed: {e}")
     show_sources = st.toggle("Show sources", value=True)
     st.divider()
     if st.button("Clear conversation"):
