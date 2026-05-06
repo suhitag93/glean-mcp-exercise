@@ -82,7 +82,7 @@ def _extract_snippet_text(s: object) -> str:
         return str(s)
     # {"snippet": "text"} or {"snippet": {"text": "..."}} or {"text": "..."}
     snippet = s.get("snippet", "")
-    if isinstance(snippet, str):
+    if isinstance(snippet, str) and snippet:
         return snippet
     if isinstance(snippet, dict):
         return snippet.get("text", "")
