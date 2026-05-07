@@ -112,9 +112,9 @@ Then open `http://localhost:8501` in your browser.
 - **Select datasource**: dropdown with the available datasources (`interviewds` through `interviewds6`); conversation history clears automatically on change
 - **Upload a .md file (optional)**: upload a Markdown document from your device to index into the selected datasource
 - **Index to datasource**: single button with conditional logic:
-  - If a file is uploaded → indexes that file only into the selected datasource
-  - If no file is uploaded → indexes all documents from `data/documents/` into the selected datasource
-  - On URL regex mismatch Glean's error is parsed automatically to derive the correct URL prefix; click again to retry
+  - If a `.md` file is uploaded → indexes *only* that file into the selected datasource
+  - If *no* file is uploaded → indexes all 8 sample documents from `data/documents/` into the selected datasource
+  - On URL regex mismatch, Glean's error is parsed automatically to derive the correct URL prefix and shown as a warning — click again to retry with the corrected prefix
 - **Show sources**: toggle source citations on/off in chat responses
 - **Clear conversation**: resets chat history and `chat_id`
 
