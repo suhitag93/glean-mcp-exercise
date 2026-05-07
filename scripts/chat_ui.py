@@ -50,7 +50,7 @@ st.caption("Ask anything about the Acme Corp knowledge base.")
 DATASOURCE_CONFIGS: dict[str, tuple[str, str]] = {
     "interviewds":  ("https://internal.example.com/policies", "KnowledgeArticle"),
     "interviewds2": ("https://internal.example.com/policies", "Article"),
-    "interviewds3": ("https://internal.example.com/policies", "Article"),
+    "interviewds3": ("https://internal.example.com/policies", "KnowledgeArticle"),
     "interviewds4": ("https://internal.example.com/policies", "Article"),
     "interviewds5": ("https://internal.example.com/policies", "Article"),
     "interviewds6": ("https://internal.example.com/policies", "Article"),
