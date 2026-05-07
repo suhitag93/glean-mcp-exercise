@@ -53,7 +53,7 @@ def ask_glean(
     ] = 5,
     datasource_filter: Annotated[
         str | None,
-        "Optional: restrict search to a specific Glean datasource (e.g. 'glean-mcp-exercise')",
+        "Optional: restrict search to a specific Glean datasource. Defaults to the GLEAN_DATASOURCE env var if not provided.",
     ] = None,
     chat_session_id: Annotated[
         str | None,
@@ -71,11 +71,12 @@ def ask_glean(
     cfg = get_config()
 
     # 1. Retrieve relevant documents via Glean Search
+    # Fall back to the env-configured datasource when none is specified at call time
     results = search(
         question,
         cfg=cfg,
         page_size=max(1, min(num_results, 10)),
-        datasource_filter=datasource_filter,
+        datasource_filter=datasource_filter or cfg.datasource,
     )
 
     # 2. Generate a grounded answer via Glean Chat
