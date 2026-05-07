@@ -67,6 +67,8 @@ with st.sidebar:
         datasource, ("https://internal.example.com/policies", "KnowledgeArticle")
     )
 
+    st.write(f"**Object type:** `{object_type}`")
+
     st.divider()
     st.subheader("Index to Datasource")
     uploaded_file = st.file_uploader(
