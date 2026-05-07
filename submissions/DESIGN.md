@@ -118,6 +118,21 @@ The tool returns a formatted Markdown string with `## Answer` and `## Sources` s
 
 ## 4. Development Approach and Product Decisions
 
+### Unit Tests as Pre-Flight Check
+
+The test suite in `tests/` (38 tests across `test_search.py`, `test_mcp_server.py`, and `test_indexer.py`) covers all pure logic in the codebase — snippet parsing, document conversion, source merging, and output formatting — without making any network calls or requiring Glean credentials. Tests run in under 2 seconds.
+
+The intended workflow before any demo or API session:
+
+```bash
+pytest tests/          # verify logic — no credentials needed
+streamlit run scripts/chat_ui.py   # then start the app
+```
+
+This separation is deliberate. The unit tests verify the code; the Streamlit app and `test_pipeline.py` verify the live integration. Running `pytest` first isolates any regressions introduced since the last session before Glean API calls are made. A failure in `pytest` points to broken local logic; a failure in the app points to an API or environment issue.
+
+Writing the tests also surfaced a real bug: `_extract_snippet_text()` in `search.py` returned an empty string for snippets shaped as `{"text": "..."}` because the early return on an empty `snippet` key prevented the `text` fallback from being reached. The fix was a one-line guard change. Without the test, this shape would have silently lost snippet content in search results.
+
 ### CLI Pipeline as Triage Layer
 
 Throughout development, `scripts/test_pipeline.py` served as the primary triage tool for isolating whether errors originated in the code, the API, or the UI layer. When the Streamlit UI surfaced an error it was not always clear whether the problem was a UI bug, a bad API call, or a misconfiguration — and UI errors often obscured the real cause.
