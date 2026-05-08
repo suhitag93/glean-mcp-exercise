@@ -94,6 +94,15 @@ The Chat API returns citations in its response, but they often carry minimal met
 
 The tool returns a formatted Markdown string with `## Answer` and `## Sources` sections rather than a structured JSON object. This renders directly in Cursor's agent chat and Claude Desktop without any client-side rendering logic. The trade-off is that it is harder to parse programmatically, but for the intended use case — a human reading answers in an IDE — readability takes priority.
 
+### Indexing is Deliberately Excluded from the MCP Tool
+
+The MCP tool is scoped to search and retrieval only. Indexing is kept as a separate operation — via the `glean-index` CLI or the Streamlit UI — for two reasons:
+
+- **IP allowlisting.** The Indexing API only accepts requests from pre-approved IPs. The MCP server runs as a subprocess of whatever client invokes it (Cursor, Claude Desktop), which could be on any machine or network. That environment cannot be guaranteed to be allowlisted.
+- **Intent mismatch.** Indexing is a privileged setup operation — a human decision about when the corpus needs to change. The MCP tool's job is to answer questions against whatever is already in Glean, not to manage the corpus.
+
+In production, indexing would be triggered by a pipeline — a webhook on document update, a scheduled sync job, or a CI step — not by an IDE tool. The MCP tool is correctly scoped as query-time only.
+
 ---
 
 ## 4. Development Approach and Product Decisions
