@@ -70,38 +70,31 @@ The key design choice is to let Glean handle both retrieval (Search API) and gen
 
 ### Single Tool, Full Pipeline
 
-The MCP server exposes a single tool — `ask_glean` — rather than separate `search_glean` and `chat_glean` tools. The MCP client (Cursor, Claude Desktop) does not need to know how the pipeline works internally or how to coordinate two tools in sequence. It asks a question and gets an answer. Keeping the interface at the level of intent rather than implementation makes the tool more useful to an AI agent and more robust to future pipeline changes.
+`ask_glean` exposes the full Search → Chat pipeline as one tool rather than separate `search_glean` and `chat_glean` tools. The calling agent asks a question and gets an answer — it does not need to know how the pipeline works or coordinate two tools in sequence. This keeps the interface at the level of intent, making it more useful to an AI agent and more resilient to future pipeline changes.
 
 ### `datasource_filter` as a Call-Time Parameter
 
-The datasource is exposed as an optional parameter on the tool rather than fixed at the environment variable level. This means the same running MCP server instance can search across different datasources depending on what the question requires — the calling agent can specify `datasource_filter="interviewds2"` on one turn and `datasource_filter="interviewds"` on the next without restarting the server or changing configuration.
-
-This mirrors the same principle applied in the Streamlit UI: datasource as a runtime choice, not a deploy-time constant. In a real enterprise deployment, an agent could route questions to the correct datasource based on the topic — HR questions to the HR datasource, engineering questions to the engineering datasource — using the same tool.
+Datasource is an optional parameter rather than a fixed env var, so the same running server can search across different datasources without restarting. The calling agent can pass `datasource_filter="interviewds2"` on one turn and `datasource_filter="interviewds"` on the next, defaulting to the `GLEAN_DATASOURCE` env var when omitted. In production, an agent could route HR questions to one datasource and engineering questions to another using the same tool.
 
 ### `chat_session_id` and Stateless Design
 
-The MCP tool is intentionally stateless. It does not persist `chat_session_id` between calls. The caller is responsible for threading it explicitly if multi-turn continuity is needed. This is a deliberate trade-off: a stateless tool is simpler, more predictable, and composable — any agent or client can call it without worrying about hidden session state. The Streamlit UI, by contrast, manages `chat_id` automatically because it owns the session lifecycle.
+The MCP tool is intentionally stateless — it does not persist `chat_session_id` between calls. The caller threads it explicitly when multi-turn continuity is needed, keeping the tool simple, predictable, and composable across any client. The Streamlit UI manages `chat_id` automatically because it owns the session lifecycle; the MCP tool does not.
 
 ### stdio Transport
 
-The MCP server runs over stdio rather than HTTP. This is the standard transport for IDE-integrated MCP tools (Cursor, Claude Desktop). It means no port configuration, no network exposure, and the process lifecycle is managed entirely by the MCP client — it starts the process when needed and terminates it when done.
+The server runs over stdio rather than HTTP, which is the standard transport for IDE-integrated MCP tools like Cursor and Claude Desktop. This means no port configuration, no network exposure, and the process lifecycle is managed entirely by the MCP client. It starts on demand and terminates when the client exits.
 
 ### Citation Merging
 
-The Chat API returns citations in its response, but they often carry minimal metadata. The search results returned earlier in the pipeline have richer metadata — title, URL, datasource, snippet. `_merge_sources()` uses search results as the primary source of truth for citations and supplements with any additional Chat API citations not already covered. The result is that every source shown to the user has a title, URL, and a snippet excerpt — regardless of what the Chat API chose to cite.
+The Chat API returns citations with minimal metadata; search results carry richer data — title, URL, datasource, snippet. `_merge_sources()` uses search results as the primary source of truth and supplements with any Chat API citations not already covered. Every source shown to the user has a title, URL, and snippet regardless of what the Chat API chose to cite.
 
 ### Markdown Output
 
-The tool returns a formatted Markdown string with `## Answer` and `## Sources` sections rather than a structured JSON object. This renders directly in Cursor's agent chat and Claude Desktop without any client-side rendering logic. The trade-off is that it is harder to parse programmatically, but for the intended use case — a human reading answers in an IDE — readability takes priority.
+The tool returns a formatted Markdown string with `## Answer` and `## Sources` sections rather than structured JSON. This renders directly in Cursor and Claude Desktop without any client-side parsing logic. Readability in an IDE takes priority over programmatic parseability for this use case.
 
-### Indexing is Deliberately Excluded from the MCP Tool
+### Indexing Excluded from MCP Tool
 
-The MCP tool is scoped to search and retrieval only. Indexing is kept as a separate operation — via the `glean-index` CLI or the Streamlit UI — for two reasons:
-
-- **IP allowlisting.** The Indexing API only accepts requests from pre-approved IPs. The MCP server runs as a subprocess of whatever client invokes it (Cursor, Claude Desktop), which could be on any machine or network. That environment cannot be guaranteed to be allowlisted.
-- **Intent mismatch.** Indexing is a privileged setup operation — a human decision about when the corpus needs to change. The MCP tool's job is to answer questions against whatever is already in Glean, not to manage the corpus.
-
-In production, indexing would be triggered by a pipeline — a webhook on document update, a scheduled sync job, or a CI step — not by an IDE tool. The MCP tool is correctly scoped as query-time only.
+Indexing is kept separate — via `glean-index` CLI or the Streamlit UI — because the Indexing API only accepts requests from allowlisted IPs, and the MCP server runs as a subprocess of whatever client invokes it, on any machine or network. Indexing is also a privileged setup operation — a human decision about when the corpus changes — not a query-time concern. In production it would be triggered by a webhook, scheduled sync, or CI step.
 
 ---
 
