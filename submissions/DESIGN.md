@@ -32,7 +32,6 @@
 
 | Challenge | Resolution |
 |---|---|
-| Raw HTTP with `stream: false` caused indefinite `ReadTimeout` — sandbox does not support non-streaming over raw HTTP | Switched to the official `glean-api-client` SDK |
 | `create_stream()` raised `GleanError` — sandbox returns complete JSON, not SSE | Used `create()` instead of `create_stream()` |
 | SDK has no built-in `act_as` parameter — no direct way to inject `X-Glean-ActAs` | Passed a pre-configured `httpx.Client` with the header to the SDK constructor |
 | `messageType` is a Python enum — `str(MessageType.CONTENT)` evaluates to `"MessageType.CONTENT"` not `"CONTENT"`, causing parser to always miss the answer | Parsed via `getattr(msg_type, "value", str(msg_type)).upper()` to extract the raw string |
