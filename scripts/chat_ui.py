@@ -31,6 +31,7 @@ import streamlit as st
 from glean_chatbot.chat import chat
 from glean_chatbot.config import get_config
 from glean_chatbot.indexer import build_documents, register_datasource, _index_documents, _markdown_to_glean_doc, DOCUMENTS_DIR
+from glean_chatbot.mcp_server import _merge_sources
 from glean_chatbot.search import search
 
 # ── Page config ──────────────────────────────────────────────────────────────
@@ -184,11 +185,12 @@ for msg in st.session_state.messages:
         st.markdown(msg["content"])
         if msg["role"] == "assistant" and "search_result_count" in msg:
             src_count = msg.get("search_result_count", 0)
+            chat_cit_count = msg.get("chat_citation_count", 0)
             cit_count = msg.get("citation_count", 0)
-            if cit_count == 0 and src_count > 0:
-                st.caption(f"Retrieved **{src_count}** document(s) from search · ⚠️ No sources cited — answer may not be grounded")
+            if chat_cit_count == 0 and src_count > 0:
+                st.caption(f"Retrieved **{src_count}** document(s) from search · ⚠️ No sources cited by Chat API — showing search results as context")
             else:
-                st.caption(f"Retrieved **{src_count}** document(s) from search · **{cit_count}** source(s) cited")
+                st.caption(f"Retrieved **{src_count}** document(s) from search · **{chat_cit_count}** source(s) cited")
         if show_sources and msg.get("sources"):
             with st.expander("Sources"):
                 for i, source in enumerate(msg["sources"], 1):
@@ -251,6 +253,11 @@ if question := st.chat_input("Ask a question…"):
 
         st.markdown(response.answer)
 
+        # Raw Chat API citation count — used for grounding confidence signal
+        chat_citation_count = len(response.sources)
+
+        # Merge Chat citations with richer search result metadata
+        merged_sources = _merge_sources(response.sources, results)
         sources_data = [
             {
                 "title": s.title,
@@ -258,15 +265,15 @@ if question := st.chat_input("Ask a question…"):
                 "snippet": s.snippet,
                 "datasource": s.datasource,
             }
-            for s in response.sources
+            for s in merged_sources
         ]
 
         # Persistent metadata line: search result count + citation count
         citation_count = len(sources_data)
-        if citation_count == 0 and len(results) > 0:
-            st.caption(f"Retrieved **{len(results)}** document(s) from search · ⚠️ No sources cited — answer may not be grounded")
+        if chat_citation_count == 0 and len(results) > 0:
+            st.caption(f"Retrieved **{len(results)}** document(s) from search · ⚠️ No sources cited by Chat API — showing search results as context")
         else:
-            st.caption(f"Retrieved **{len(results)}** document(s) from search · **{citation_count}** source(s) cited")
+            st.caption(f"Retrieved **{len(results)}** document(s) from search · **{chat_citation_count}** source(s) cited")
 
         if show_sources and sources_data:
             with st.expander("Sources"):
@@ -287,4 +294,5 @@ if question := st.chat_input("Ask a question…"):
         "sources": sources_data,
         "search_result_count": len(results),
         "citation_count": citation_count,
+        "chat_citation_count": chat_citation_count,
     })
