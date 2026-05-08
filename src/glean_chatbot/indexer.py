@@ -1,4 +1,4 @@
-"""
+""" 
 Glean Indexing API client.
 
 Reads Markdown documents from data/documents/, converts them to Glean
@@ -7,7 +7,6 @@ document payloads, and POSTs them to the Indexing API.
 
 from __future__ import annotations
 
-import json
 import time
 from pathlib import Path
 
@@ -15,6 +14,8 @@ import httpx
 
 from .config import get_config
 from .models import ContentSection, DocumentPermissions, GleanDocument
+
+SUPPORTED_EXTENSIONS = {".md", ".txt", ".pdf"}
 
 # Path to the bundled sample documents
 DOCUMENTS_DIR = Path(__file__).parent.parent.parent / "data" / "documents"
@@ -24,38 +25,79 @@ DEFAULT_DOC_URL_PREFIX = "https://internal.example.com/policies"
 DEFAULT_OBJECT_TYPE = "KnowledgeArticle"
 
 
-def _markdown_to_glean_doc(
-    path: Path,
-    datasource: str,
-    url_prefix: str = DEFAULT_DOC_URL_PREFIX,
-    object_type: str = DEFAULT_OBJECT_TYPE,
-) -> GleanDocument:
-    """Parse a Markdown file into a GleanDocument."""
+def _parse_markdown(path: Path) -> tuple[str, str, str]:
+    """Return (title, summary, body_text) from a Markdown file."""
     raw = path.read_text(encoding="utf-8")
     lines = raw.splitlines()
-
-    # Extract title from first H1 heading
     title = path.stem.replace("_", " ").title()
     for line in lines:
         if line.startswith("# "):
             title = line[2:].strip()
             break
-
-    # Extract summary from the first non-empty, non-heading paragraph
     summary: str | None = None
-    in_frontmatter = False
     for line in lines:
         stripped = line.strip()
         if stripped.startswith("#") or stripped.startswith("**") or not stripped:
             continue
-        if "|" in stripped:  # skip table rows
+        if "|" in stripped:
             continue
         summary = stripped[:200]
         break
+    return title, summary or title, raw
 
-    # Stable document ID derived from filename (no spaces, lowercase)
+
+def _parse_txt(path: Path) -> tuple[str, str, str]:
+    """Return (title, summary, body_text) from a plain-text file."""
+    raw = path.read_text(encoding="utf-8")
+    title = path.stem.replace("_", " ").title()
+    # First non-empty line as summary
+    summary = next((l.strip() for l in raw.splitlines() if l.strip()), title)
+    return title, summary[:200], raw
+
+
+def _parse_pdf(path: Path) -> tuple[str, str, str]:
+    """Return (title, summary, body_text) from a text-based PDF using pypdf."""
+    try:
+        from pypdf import PdfReader
+    except ImportError:
+        raise ImportError(
+            "pypdf is required to index PDF files. Install it with: pip install pypdf"
+        )
+    reader = PdfReader(str(path))
+    pages = [page.extract_text() or "" for page in reader.pages]
+    body = "\n\n".join(pages).strip()
+    if not body:
+        raise ValueError(
+            f"No text could be extracted from '{path.name}'. "
+            "Scanned PDFs require OCR and are not supported."
+        )
+    title = path.stem.replace("_", " ").title()
+    summary = next((l.strip() for l in body.splitlines() if l.strip()), title)
+    return title, summary[:200], body
+
+
+def _file_to_glean_doc(
+    path: Path,
+    datasource: str,
+    url_prefix: str = DEFAULT_DOC_URL_PREFIX,
+    object_type: str = DEFAULT_OBJECT_TYPE,
+) -> GleanDocument:
+    """Parse a .md, .txt, or .pdf file into a GleanDocument."""
+    suffix = path.suffix.lower()
+
+    if suffix == ".md":
+        title, summary, body = _parse_markdown(path)
+        mime_type = "text/markdown"
+    elif suffix == ".txt":
+        title, summary, body = _parse_txt(path)
+        mime_type = "text/plain"
+    elif suffix == ".pdf":
+        title, summary, body = _parse_pdf(path)
+        mime_type = "text/plain"
+    else:
+        raise ValueError(f"Unsupported file type: {suffix}. Supported: {SUPPORTED_EXTENSIONS}")
+
     doc_id = path.stem.replace(" ", "-").lower()
-
     url = f"{url_prefix.rstrip('/')}/{doc_id}"
 
     return GleanDocument(
@@ -64,11 +106,21 @@ def _markdown_to_glean_doc(
         object_type=object_type,
         title=title,
         view_url=url,
-        body=ContentSection(mime_type="text/markdown", text_content=raw),
-        summary=ContentSection(mime_type="text/plain", text_content=summary or title),
+        body=ContentSection(mime_type=mime_type, text_content=body),
+        summary=ContentSection(mime_type="text/plain", text_content=summary),
         permissions=DocumentPermissions(allow_anonymous_access=True),
         updated_at=int(time.time()),
     )
+
+
+# Keep old name as alias so existing callers (chat_ui.py) don't break
+def _markdown_to_glean_doc(
+    path: Path,
+    datasource: str,
+    url_prefix: str = DEFAULT_DOC_URL_PREFIX,
+    object_type: str = DEFAULT_OBJECT_TYPE,
+) -> GleanDocument:
+    return _file_to_glean_doc(path, datasource, url_prefix, object_type)
 
 
 def build_documents(
@@ -76,10 +128,15 @@ def build_documents(
     url_prefix: str = DEFAULT_DOC_URL_PREFIX,
     object_type: str = DEFAULT_OBJECT_TYPE,
 ) -> list[GleanDocument]:
-    """Load all Markdown files from DOCUMENTS_DIR and return GleanDocument list."""
+    """Load all supported files (.md, .txt, .pdf) from DOCUMENTS_DIR."""
     docs = []
-    for md_file in sorted(DOCUMENTS_DIR.glob("*.md")):
-        docs.append(_markdown_to_glean_doc(md_file, datasource, url_prefix=url_prefix, object_type=object_type))
+    for path in sorted(DOCUMENTS_DIR.iterdir()):
+        if path.suffix.lower() not in SUPPORTED_EXTENSIONS:
+            continue
+        try:
+            docs.append(_file_to_glean_doc(path, datasource, url_prefix=url_prefix, object_type=object_type))
+        except ValueError as e:
+            print(f"  Skipping '{path.name}': {e}")
     return docs
 
 

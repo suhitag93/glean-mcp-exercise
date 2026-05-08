@@ -1,4 +1,4 @@
-"""
+""" 
 Streamlit chat interface for the Glean RAG chatbot.
 
 Usage (from repo root with venv active):
@@ -30,11 +30,11 @@ import streamlit as st
 
 from glean_chatbot.chat import chat
 from glean_chatbot.config import get_config
-from glean_chatbot.indexer import build_documents, register_datasource, _index_documents, _markdown_to_glean_doc, DOCUMENTS_DIR
+from glean_chatbot.indexer import build_documents, register_datasource, _index_documents, _file_to_glean_doc, DOCUMENTS_DIR
 from glean_chatbot.mcp_server import _merge_sources
 from glean_chatbot.search import search
 
-# ── Page config ──────────────────────────────────────────────────────────────
+# ── Page config ───────────────────────────────────────────────────────────────────────
 
 st.set_page_config(
     page_title="Glean Knowledge Base",
@@ -45,7 +45,7 @@ st.set_page_config(
 st.title("🔍 Glean Knowledge Base")
 st.caption("Ask anything about the Acme Corp knowledge base.")
 
-# ── Sidebar settings ─────────────────────────────────────────────────────────
+# ── Sidebar settings ─────────────────────────────────────────────────────────────────────
 
 # Known datasource configs: (url_prefix, object_type)
 DATASOURCE_CONFIGS: dict[str, tuple[str, str]] = {
@@ -73,9 +73,9 @@ with st.sidebar:
     st.divider()
     st.subheader("Index to Datasource")
     uploaded_file = st.file_uploader(
-        "Upload a .md file (optional)",
-        type=["md"],
-        help="If provided, indexes this file. If omitted, indexes all files from data/documents/.",
+        "Upload a file to index (optional)",
+        type=["md", "txt", "pdf"],
+        help="Supports .md, .txt, and text-based .pdf files. If omitted, indexes all files from data/documents/.",
     )
 
     if st.button("Index to datasource"):
@@ -91,12 +91,13 @@ with st.sidebar:
 
             if uploaded_file is not None:
                 # Index only the uploaded file
-                with tempfile.NamedTemporaryFile(delete=False, suffix=".md", prefix=uploaded_file.name.replace(".md", "") + "_") as tmp:
+                suffix = Path(uploaded_file.name).suffix
+                with tempfile.NamedTemporaryFile(delete=False, suffix=suffix) as tmp:
                     tmp.write(uploaded_file.getvalue())
                     tmp_path = Path(tmp.name)
                 try:
                     log.info(f"Indexing uploaded file '{uploaded_file.name}'…")
-                    doc = _markdown_to_glean_doc(
+                    doc = _file_to_glean_doc(
                         tmp_path,
                         datasource,
                         url_prefix=doc_url_prefix,
@@ -131,7 +132,13 @@ with st.sidebar:
         except Exception as e:
             log.empty()
             msg = str(e)
-            if "Object definitions not found" in msg or "object types" in msg:
+            if "No text could be extracted" in msg or "Scanned" in msg:
+                st.error(
+                    f"Could not extract text from the uploaded PDF. "
+                    "Scanned or image-based PDFs are not supported — only text-based PDFs work. "
+                    "Try exporting the document as .txt or .md instead."
+                )
+            elif "Object definitions not found" in msg or "object types" in msg:
                 st.error(
                     f"Indexing failed: object type **'{object_type}'** is not configured for "
                     f"datasource **'{datasource}'**. Update DATASOURCE_CONFIGS in chat_ui.py with the correct object type."
@@ -140,7 +147,7 @@ with st.sidebar:
                 m = re.search(r"URL Regex pattern (.+?) for the datasource", msg)
                 if m:
                     detected_regex = m.group(1)
-                    detected_prefix = re.sub(r"/?\.?\*$", "", detected_regex)
+                    detected_prefix = re.sub(r"/?\.\.?\*$", "", detected_regex)
                     detected_prefix = detected_prefix.replace("\\.", ".").rstrip("/")
                     DATASOURCE_CONFIGS[datasource] = (detected_prefix, object_type)
                     st.warning(
@@ -161,7 +168,7 @@ with st.sidebar:
         st.session_state.chat_session_id = None
         st.rerun()
 
-# ── Session state ─────────────────────────────────────────────────────────────
+# ── Session state ─────────────────────────────────────────────────────────────────────────
 
 if "messages" not in st.session_state:
     st.session_state.messages = []
@@ -178,7 +185,7 @@ if datasource != st.session_state.active_datasource:
     st.session_state.chat_session_id = None
     st.session_state.active_datasource = datasource
 
-# ── Render chat history ───────────────────────────────────────────────────────
+# ── Render chat history ────────────────────────────────────────────────────────────────────────
 
 for msg in st.session_state.messages:
     with st.chat_message(msg["role"]):
@@ -204,7 +211,7 @@ for msg in st.session_state.messages:
                     if snippet:
                         st.caption(snippet[:200])
 
-# ── Chat input ────────────────────────────────────────────────────────────────
+# ── Chat input ──────────────────────────────────────────────────────────────────────────────
 
 if question := st.chat_input("Ask a question…"):
     # Show the user message immediately
