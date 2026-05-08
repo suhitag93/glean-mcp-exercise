@@ -59,6 +59,10 @@ def ask_glean(
         str | None,
         "Optional: Glean chat session ID to continue a multi-turn conversation",
     ] = None,
+    include_citations: Annotated[
+        bool,
+        "Whether to include source citations in the response (default true)",
+    ] = True,
 ) -> str:
     """
     RAG pipeline: Search → Chat → Return answer + sources.
@@ -89,7 +93,7 @@ def ask_glean(
 
     # 3. Build the final result
     # Merge Chat API citations with Search result metadata for richer output
-    sources = _merge_sources(chat_response.sources, results)
+    sources = _merge_sources(chat_response.sources, results) if include_citations else []
     result = ChatbotResult(
         answer=chat_response.answer,
         sources=sources,
