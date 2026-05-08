@@ -107,36 +107,11 @@ In production, indexing would be triggered by a pipeline — a webhook on docume
 
 ## 4. Development Approach and Product Decisions
 
-### Unit Tests as Pre-Flight Check
+**CLI pipeline as triage layer.** `scripts/test_pipeline.py` was the primary tool for isolating whether errors came from the code, the API, or the UI. A specific example: the Streamlit UI showed an error for `interviewds2` suggesting the datasource required admin privileges. Running the same question through `test_pipeline.py` returned results immediately — proving the datasource was accessible. The real issue was that `interviewds2` uses object type `Article` not `KnowledgeArticle`, which was hardcoded. That finding drove making `object_type` a configurable parameter.
 
-The test suite in `tests/` (38 tests across `test_search.py`, `test_mcp_server.py`, and `test_indexer.py`) covers all pure logic in the codebase — snippet parsing, document conversion, source merging, and output formatting — without making any network calls or requiring Glean credentials. Tests run in under 2 seconds.
+**Datasource flexibility as a product decision.** The brief called for a single datasource. Rather than hardcoding `interviewds`, datasource was treated as a runtime parameter from the start — configurable via env var, overridable in the Streamlit UI, and passable to the MCP tool. This required solving problems a hardcoded approach would have hidden: each datasource has its own `urlRegex` and `objectType`, discoverable only through failed indexing attempts. The result is a UI where users can switch datasources, index into any of them, and query across them without touching code.
 
-The intended workflow before any demo or API session:
-
-```bash
-pytest tests/          # verify logic — no credentials needed
-streamlit run scripts/chat_ui.py   # then start the app
-```
-
-This separation is deliberate. The unit tests verify the code; the Streamlit app and `test_pipeline.py` verify the live integration. Running `pytest` first isolates any regressions introduced since the last session before Glean API calls are made. A failure in `pytest` points to broken local logic; a failure in the app points to an API or environment issue.
-
-Writing the tests also surfaced a real bug: `_extract_snippet_text()` in `search.py` returned an empty string for snippets shaped as `{"text": "..."}` because the early return on an empty `snippet` key prevented the `text` fallback from being reached. The fix was a one-line guard change. Without the test, this shape would have silently lost snippet content in search results.
-
-### CLI Pipeline as Triage Layer
-
-Throughout development, `scripts/test_pipeline.py` served as the primary triage tool for isolating whether errors originated in the code, the API, or the UI layer. When the Streamlit UI surfaced an error it was not always clear whether the problem was a UI bug, a bad API call, or a misconfiguration — and UI errors often obscured the real cause.
-
-A specific example: selecting `interviewds2` in the Streamlit UI showed an error suggesting the datasource was not indexed and required admin privileges. Running the same question through `test_pipeline.py` with `GLEAN_DATASOURCE=interviewds2` returned results immediately — proving the datasource was indexed and fully accessible. The UI error was a red herring. The CLI triage revealed the real issue: `interviewds2` uses object type `Article` rather than `KnowledgeArticle`, which the indexer had hardcoded. That finding drove the decision to make `object_type` a configurable parameter and add it as an editable field in the sidebar.
-
-This pattern — reproduce in the CLI pipeline first, fix the root cause, then verify in the UI — was applied consistently throughout development and is why `test_pipeline.py` exists as a standalone script rather than being embedded in the UI code.
-
-### Datasource Flexibility as a Product Decision
-
-The brief called for a single datasource. Rather than hardcoding `interviewds` as a constant, the datasource was treated as a runtime parameter from the start — configurable via environment variable, overridable in the Streamlit UI, and passable as a parameter to the MCP tool.
-
-This was a deliberate product decision: in a real enterprise deployment, different teams would use different datasources. Locking the tool to a single datasource at the code level would make it a demo, not a tool. Treating it as a runtime parameter required solving problems that a hardcoded approach would have hidden — specifically, that each datasource in the sandbox has its own `urlRegex` and `objectType`. Solving those led to the URL regex auto-detection from error responses and the configurable object type field.
-
-The result is a UI where a user can switch datasources, index documents into any of them, and query across them — without touching code or restarting the app.
+**Unit tests as pre-flight check.** 38 tests across `test_search.py`, `test_mcp_server.py`, and `test_indexer.py` cover all pure logic without network calls or credentials. The intended workflow before any demo: `pytest tests/` first to verify local logic, then start the app to verify live integration. A failure in `pytest` points to broken code; a failure in the app points to an API or environment issue. Writing the tests also surfaced a real bug — `_extract_snippet_text()` silently returned empty string for snippets shaped as `{"text": "..."}`, fixed with a one-line guard change.
 
 ---
 
