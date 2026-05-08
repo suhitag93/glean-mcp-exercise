@@ -182,6 +182,13 @@ if datasource != st.session_state.active_datasource:
 for msg in st.session_state.messages:
     with st.chat_message(msg["role"]):
         st.markdown(msg["content"])
+        if msg["role"] == "assistant" and "search_result_count" in msg:
+            src_count = msg.get("search_result_count", 0)
+            cit_count = msg.get("citation_count", 0)
+            if cit_count == 0 and src_count > 0:
+                st.caption(f"Retrieved **{src_count}** document(s) from search · ⚠️ No sources cited — answer may not be grounded")
+            else:
+                st.caption(f"Retrieved **{src_count}** document(s) from search · **{cit_count}** source(s) cited")
         if show_sources and msg.get("sources"):
             with st.expander("Sources"):
                 for i, source in enumerate(msg["sources"], 1):
@@ -239,6 +246,9 @@ if question := st.chat_input("Ask a question…"):
             st.write(f"Done — answer ready from **{len(response.sources)}** cited source(s).")
             status.update(label="Answer ready", state="complete", expanded=False)
 
+        if len(results) == 0:
+            st.warning("No documents were retrieved from search. The answer below may not be grounded in your knowledge base.")
+
         st.markdown(response.answer)
 
         sources_data = [
@@ -250,6 +260,13 @@ if question := st.chat_input("Ask a question…"):
             }
             for s in response.sources
         ]
+
+        # Persistent metadata line: search result count + citation count
+        citation_count = len(sources_data)
+        if citation_count == 0 and len(results) > 0:
+            st.caption(f"Retrieved **{len(results)}** document(s) from search · ⚠️ No sources cited — answer may not be grounded")
+        else:
+            st.caption(f"Retrieved **{len(results)}** document(s) from search · **{citation_count}** source(s) cited")
 
         if show_sources and sources_data:
             with st.expander("Sources"):
@@ -268,4 +285,6 @@ if question := st.chat_input("Ask a question…"):
         "role": "assistant",
         "content": response.answer,
         "sources": sources_data,
+        "search_result_count": len(results),
+        "citation_count": citation_count,
     })
