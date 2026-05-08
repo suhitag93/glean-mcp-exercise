@@ -205,7 +205,8 @@ if question := st.chat_input("Ask a question…"):
 
     # Run the RAG pipeline
     with st.chat_message("assistant"):
-        with st.spinner("Searching…"):
+        with st.status("Thinking…", expanded=True) as status:
+            st.write(f"Searching **{datasource}** for relevant documents…")
             try:
                 cfg = get_config()
                 results = search(
@@ -215,10 +216,13 @@ if question := st.chat_input("Ask a question…"):
                     datasource_filter=datasource or None,
                 )
             except Exception as e:
+                status.update(label="Search failed", state="error")
                 st.error(f"Search failed: {e}")
                 st.stop()
 
-        with st.spinner("Generating answer…"):
+            st.write(f"Retrieved **{len(results)}** document(s) — building context…")
+
+            st.write("Sending context to Glean Chat for answer generation…")
             try:
                 response = chat(
                     question=question,
@@ -228,8 +232,12 @@ if question := st.chat_input("Ask a question…"):
                 )
                 st.session_state.chat_session_id = response.chat_session_id
             except Exception as e:
+                status.update(label="Chat failed", state="error")
                 st.error(f"Chat failed: {e}")
                 st.stop()
+
+            st.write(f"Done — answer ready from **{len(response.sources)}** cited source(s).")
+            status.update(label="Answer ready", state="complete", expanded=False)
 
         st.markdown(response.answer)
 
