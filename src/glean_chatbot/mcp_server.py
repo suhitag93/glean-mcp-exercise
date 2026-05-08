@@ -47,7 +47,7 @@ mcp = FastMCP(
 )
 def ask_glean(
     question: Annotated[str, "The natural-language question to answer"],
-    num_results: Annotated[
+    top_k: Annotated[
         int,
         "Number of search results to retrieve and use as context (1–10, default 5)",
     ] = 5,
@@ -79,7 +79,7 @@ def ask_glean(
     results = search(
         question,
         cfg=cfg,
-        page_size=max(1, min(num_results, 10)),
+        page_size=max(1, min(top_k, 10)),
         datasource_filter=datasource_filter or cfg.datasource,
     )
 

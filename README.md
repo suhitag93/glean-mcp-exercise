@@ -226,7 +226,7 @@ Use ask_glean to answer: "How many PTO days do employees get after 3 years?"
 | Parameter | Type | Required | Default | Description |
 |---|---|---|---|---|
 | `question` | string | Yes | — | Natural-language question |
-| `num_results` | int | No | 5 | Search results to use as context (1–10) |
+| `top_k` | int | No | 5 | Search results to use as context (1–10) |
 | `datasource_filter` | string | No | env var | Restrict search to a specific datasource |
 | `chat_session_id` | string | No | None | Session ID for multi-turn conversation continuity |
 
